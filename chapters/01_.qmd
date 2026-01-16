@@ -1,0 +1,72 @@
+# 引言 {data-stack-name="引言"}
+
+## 演講主題
+
+**觀察性研究的因果推論：給臨床醫師的實戰指南**
+
+*Causal Inference from Observational Studies: A Practical Guide for Clinicians*
+
+::: {.notes}
+歡迎各位！今天要帶大家走一遍因果推論的完整流程。這不是統計理論課，而是實戰導向的工作坊。我們會從「為什麼需要」講到「怎麼做」，最後到「怎麼報告」。
+:::
+
+## 今天你會學到什麼？
+
+::: {.incremental}
+1. **為什麼**：觀察性研究為何不能直接下因果結論？
+2. **怎麼想**：如何設計研究問題？（Target Trial）
+3. **怎麼做**：用什麼方法分析？（TMLE + Super Learner）
+4. **怎麼驗證**：如何確認結果可信？（敏感度分析）
+:::
+
+::: {.notes}
+今天的目標是讓大家帶走一套可以直接用的方法。不需要成為統計專家，但要知道關鍵步驟和常見陷阱。這四個問題是我們整個課程的主軸。
+:::
+
+## 課程地圖
+
+
+| 階段 | 內容 | 重點 |
+|------|------|------|
+| 1-2 | 問題與設計 | 為什麼需要？怎麼設計？ |
+| 3-4 | 方法概念 | PS → IPW → 雙重穩健 → TMLE |
+| 5-6 | 準備工作 | 選方法、備資料 |
+| 7 | R 實作 | 程式碼示範 |
+| 8-9 | 驗證報告 | E-value、論文寫作 |
+
+::: {.notes}
+這張地圖讓大家知道我們現在在哪裡。前半段是概念，後半段是實作。中間會有練習時間，請大家準備好自己的研究問題，邊聽邊想。
+:::
+
+```{r}
+#| label: setup-theme
+#| include: false
+
+# 統一的 R 設定
+library(ggplot2)
+library(showtext)
+
+# 載入中文字體
+font_add("openhuninn", "jf-openhuninn-2.1.ttf")
+showtext_auto()
+
+# 一致的色盤
+colors <- list(
+  treatment = "#E69F00",
+  control = "#56B4E9",
+  robust = "#2E86AB",
+  fragile = "#E94F37",
+  accent = "#3d6869"
+)
+
+# 統一主題
+theme_causal <- function(base_size = 16) {
+  theme_minimal(base_size = base_size, base_family = "openhuninn") +
+    theme(
+      legend.position = "top",
+      plot.title = element_text(face = "bold"),
+      panel.grid.minor = element_blank()
+    )
+}
+```
+

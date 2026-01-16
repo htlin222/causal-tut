@@ -47,6 +47,15 @@
   color: #3d6869 !important;
 }
 
+// Smaller agenda font size
+.reveal .agenda {
+  font-size: 0.75em !important;
+}
+
+.reveal .agenda li {
+  margin-bottom: 0.3em !important;
+}
+
 // Code block max height (16 lines)
 .reveal pre code {
   max-height: 22.4em !important;
@@ -61,4 +70,9 @@
 // 10% smaller h2
 .reveal h2 {
   font-size: 1.44em !important;
+}
+
+// 70% size for explanatory text
+.reveal .explain-small {
+  font-size: 0.7em !important;
 }

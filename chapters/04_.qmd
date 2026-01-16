@@ -1,0 +1,361 @@
+# 第三部分：方法概念（上）基礎篇 {data-stack-name="方法基礎"}
+
+## 本節重點
+
+現在我們知道要調整混淆因子，但**怎麼調整**？
+
+::: {.incremental}
+- 傳統方法有什麼問題？
+- 什麼是「傾向分數」？
+- 為什麼推薦「雙重穩健」方法？
+:::
+
+::: {.notes}
+設計好研究問題後，接下來是方法。這一節會從最基本的傾向分數開始，解釋為什麼傳統方法有問題，然後引出更好的解決方案。
+:::
+
+## 傾向分數 (Propensity Score)
+
+**白話**：「根據病人特徵，預測他接受治療的機率」
+
+::: {.fragment}
+**用途**：讓兩組變得可比較
+:::
+
+::: {.notes}
+傾向分數是因果推論的基石。簡單說，就是根據病人特徵，預測醫師會不會開這個治療給他。PS 把多個混淆因子壓縮成一個數字，讓後續處理變簡單。
+:::
+
+## PS 是怎麼算出來的？
+
+```{r}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 5
+
+set.seed(123)
+n <- 200
+
+# 模擬病人資料
+age <- round(rnorm(n, 60, 10))
+severity <- plogis(-2 + 0.05 * age + rnorm(n, 0, 0.5))
+
+# 真實的 PS 模型
+true_ps <- plogis(-3 + 0.04 * age + 2 * severity)
+treatment <- rbinom(n, 1, true_ps)
+
+df_ps <- data.frame(
+  age = age,
+  severity = severity,
+  true_ps = true_ps,
+  treatment = factor(treatment, labels = c("對照組", "治療組"))
+)
+
+# 畫出 PS 與年齡/嚴重度的關係
+library(patchwork)
+
+p1 <- ggplot(df_ps, aes(x = age, y = true_ps, color = treatment)) +
+  geom_point(alpha = 0.6, size = 2.5) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 1.5, color = "gray30") +
+  scale_color_manual(
+    values = c("治療組" = colors$treatment, "對照組" = colors$control)
+  ) +
+  labs(
+    x = "年齡",
+    y = "Propensity Score",
+    color = "",
+    title = "年齡 → PS"
+  ) +
+  theme_causal(base_size = 14) +
+  theme(legend.position = "none")
+
+p2 <- ggplot(df_ps, aes(x = severity, y = true_ps, color = treatment)) +
+  geom_point(alpha = 0.6, size = 2.5) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 1.5, color = "gray30") +
+  scale_color_manual(
+    values = c("治療組" = colors$treatment, "對照組" = colors$control)
+  ) +
+  labs(
+    x = "嚴重度",
+    y = "Propensity Score",
+    color = "",
+    title = "嚴重度 → PS"
+  ) +
+  theme_causal(base_size = 14)
+
+p1 + p2 + plot_layout(guides = "collect") & theme(legend.position = "top")
+```
+
+::: {.fragment}
+**核心**：PS 把多個共變量壓縮成一個分數，代表「這個人被治療的機率」
+:::
+
+::: {.notes}
+這張圖顯示年齡和嚴重度如何影響 PS。年紀大、嚴重度高的人 PS 較高——因為醫師更傾向給他們治療。橘色是實際接受治療的人，藍色是沒接受的。注意 PS 高的人幾乎都被治療了。
+:::
+
+## Demo
+
+```{r}
+#| echo: false
+#| fig-width: 8
+#| fig-height: 4
+
+set.seed(42)
+n <- 500
+
+# Simulate PS with different distributions for treated vs control
+ps_treated <- rbeta(n, 5, 2) # Higher PS for treated
+ps_control <- rbeta(n, 2, 5) # Lower PS for control
+
+df <- data.frame(
+  ps = c(ps_treated, ps_control),
+  group = factor(rep(c("治療組", "對照組"), each = n))
+)
+
+ggplot(df, aes(x = ps, fill = group)) +
+  geom_density(alpha = 0.6) +
+  scale_fill_manual(
+    values = c("治療組" = colors$treatment, "對照組" = colors$control)
+  ) +
+  labs(
+    x = "Propensity Score",
+    y = "Density",
+    fill = ""
+  ) +
+  theme_causal()
+```
+
+::: {.fragment}
+**重疊區域**：兩組可比較的範圍
+:::
+
+::: {.notes}
+這是 PS 分布圖的經典樣式。治療組 PS 偏高，對照組 PS 偏低，這是預期的。關鍵是中間的重疊區域——這是兩組可以比較的範圍。如果重疊很少，因果推論會很困難。
+:::
+
+## 傳統方法的問題
+
+| 方法 | 做法 | 風險 |
+|------|------|------|
+| 單純迴歸調整 | 把混淆因子丟進模型 | 模型設錯就完了 |
+| PS matching | 用 PS 配對 | 丟掉很多樣本 |
+| PS weighting (IPW) | 用 PS 加權 | 極端權重不穩定 |
+
+::: {.callout-note appearance="minimal"}
+## 名詞解釋
+- **PS matching**：找 PS 相近的治療組與對照組病人配對比較
+- **IPW (Inverse Probability Weighting)**：用 1/PS 當權重，讓兩組「人工平衡」
+:::
+
+::: {.notes}
+傳統方法各有問題。單純迴歸調整：模型設錯就完了。PS matching：配對不到的病人就丟掉，樣本量大減。IPW：接下來會詳細說明為什麼極端權重是大問題。
+:::
+
+## ⚠️ 為什麼不推薦單獨用 IPW？
+
+::: {.columns}
+::: {.column width="50%"}
+**IPW 的問題**
+
+當 PS 接近 0 或 1 時：
+
+- 權重 = 1/PS 會**爆炸**
+- 少數人主導整個估計
+- 方差巨大、估計飄動
+:::
+::: {.column width="50%"}
+**實際情況**
+
+幾百例的臨床資料：
+
+- 很常遇到重疊不佳
+- 某些病人 PS 很極端
+- IPW 會非常不穩定
+:::
+:::
+
+::: {.fragment}
+### 結論
+
+> IPW 可以當**敏感度分析**，但不建議當**主分析**
+:::
+
+::: {.notes}
+IPW 的數學很漂亮，但實務上問題很大。當 PS 接近 0 或 1 時，1/PS 會變得非常大。臨床資料幾百例的情況，很容易遇到這種極端值。一個人的權重如果是 100，他一個人就等於 100 個人，這會讓估計非常不穩定。
+:::
+
+## IPW 權重的危險：極端值
+
+```{r}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 5
+
+set.seed(456)
+n <- 500
+
+# 模擬一些極端的 PS 值
+ps_values <- c(
+  rbeta(n * 0.7, 3, 3), # 大多數人 PS 在中間
+  rbeta(n * 0.15, 0.5, 5), # 一些人 PS 很低
+  rbeta(n * 0.15, 5, 0.5) # 一些人 PS 很高
+)
+ps_values <- pmax(0.01, pmin(0.99, ps_values))
+
+# 計算 IPW 權重（簡化版：假設都是治療組）
+treatment <- rbinom(length(ps_values), 1, ps_values)
+ipw_weights <- ifelse(treatment == 1, 1 / ps_values, 1 / (1 - ps_values))
+
+df_ipw <- data.frame(
+  ps = ps_values,
+  weight = ipw_weights,
+  treatment = factor(treatment, labels = c("對照組", "治療組")),
+  extreme = ifelse(ipw_weights > 10, "極端權重 (>10)", "正常")
+)
+
+# 統計
+n_extreme <- sum(df_ipw$extreme == "極端權重 (>10)")
+pct_extreme <- round(100 * n_extreme / nrow(df_ipw), 1)
+
+p1 <- ggplot(df_ipw, aes(x = weight, fill = extreme)) +
+  geom_histogram(bins = 50, color = "white", linewidth = 0.2) +
+  geom_vline(
+    xintercept = 10,
+    linetype = "dashed",
+    color = colors$fragile,
+    linewidth = 1.2
+  ) +
+  scale_fill_manual(
+    values = c("極端權重 (>10)" = colors$fragile, "正常" = colors$control),
+    name = ""
+  ) +
+  scale_x_continuous(limits = c(0, 50)) +
+  annotate(
+    "text",
+    x = 12,
+    y = Inf,
+    label = paste0(
+      n_extreme,
+      " 人 (",
+      pct_extreme,
+      "%)
+權重 > 10"
+    ),
+    hjust = 0,
+    vjust = 1.5,
+    family = "openhuninn",
+    color = colors$fragile,
+    size = 4
+  ) +
+  annotate(
+    "text",
+    x = 2,
+    y = Inf,
+    label = "大多數人
+權重正常",
+    hjust = 0,
+    vjust = 1.5,
+    family = "openhuninn",
+    color = colors$control,
+    size = 4
+  ) +
+  labs(
+    x = "IPW 權重",
+    y = "人數",
+    title = "IPW 權重分布"
+  ) +
+  theme_causal(base_size = 14)
+
+p2 <- ggplot(df_ipw, aes(x = ps, y = weight, color = extreme)) +
+  geom_point(alpha = 0.6, size = 2) +
+  geom_hline(
+    yintercept = 10,
+    linetype = "dashed",
+    color = colors$fragile,
+    linewidth = 1
+  ) +
+  scale_color_manual(
+    values = c("極端權重 (>10)" = colors$fragile, "正常" = colors$control),
+    name = ""
+  ) +
+  scale_y_continuous(limits = c(0, 50)) +
+  annotate(
+    "text",
+    x = 0.05,
+    y = 45,
+    label = "PS 接近 0
+權重 = 1/(1-PS) 爆炸",
+    hjust = 0,
+    vjust = 1,
+    family = "openhuninn",
+    color = colors$fragile,
+    size = 3.5
+  ) +
+  annotate(
+    "text",
+    x = 0.75,
+    y = 45,
+    label = "PS 接近 1
+權重 = 1/PS 爆炸",
+    hjust = 0,
+    vjust = 1,
+    family = "openhuninn",
+    color = colors$fragile,
+    size = 3.5
+  ) +
+  annotate(
+    "curve",
+    x = 0.1,
+    xend = 0.03,
+    y = 38,
+    yend = 30,
+    curvature = 0.3,
+    arrow = arrow(length = unit(0.2, "cm")),
+    color = colors$fragile
+  ) +
+  annotate(
+    "curve",
+    x = 0.9,
+    xend = 0.97,
+    y = 38,
+    yend = 30,
+    curvature = -0.3,
+    arrow = arrow(length = unit(0.2, "cm")),
+    color = colors$fragile
+  ) +
+  labs(
+    x = "Propensity Score",
+    y = "IPW 權重",
+    title = "PS 極端 → 權重爆炸"
+  ) +
+  theme_causal(base_size = 14)
+
+p1 + p2 + plot_layout(guides = "collect") & theme(legend.position = "top")
+```
+
+::: {.fragment}
+**問題**：少數極端權重的人，主導了整個估計結果！
+:::
+
+::: {.notes}
+這張圖讓大家看看實際情況。左邊是權重分布——大多數人權重正常，但有一小群人權重超過 10 甚至更高。右邊顯示原因：PS 接近 0 或 1 的人，權重就會爆炸。這些少數人會主導整個估計結果。
+:::
+
+## 到目前為止...
+
+::: {.callout-note appearance="minimal"}
+## 我們學到什麼？
+1. **PS**：預測誰會接受治療
+2. **IPW**：用 1/PS 加權讓兩組可比
+3. **問題**：IPW 權重會爆炸、不穩定
+:::
+
+::: {.fragment}
+> **接下來**：有沒有更穩健的方法？ → **雙重穩健估計**
+:::
+
+::: {.notes}
+到這裡我們知道 PS 很有用，但單獨用 IPW 風險很大。好消息是，有一種方法可以結合 PS 模型和結果模型的優點，同時降低風險。接下來進入進階方法。
+:::
+

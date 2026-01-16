@@ -1,0 +1,902 @@
+# 第七部分：R 實作示範 {data-stack-name="R 實作"}
+
+## 本節重點
+
+終於要寫 code 了！這一節會示範：
+
+::: {.incremental}
+- 連續結果：用 `tmle` 套件
+- 二元結果：用 `tmle` 套件
+- 存活結果：用 `survtmle` 套件
+- **平衡診斷**：確認調整有效
+:::
+
+::: {.notes}
+這是今天最核心的實作環節。我會示範三種結果類型的分析程式碼，以及最重要的平衡診斷。大家可以跟著做，或是先看我示範，課後再自己練習。
+:::
+
+## 完整分析流程：5 步驟視覺化
+
+```{r}
+#| echo: false
+#| fig-width: 12
+#| fig-height: 6
+
+set.seed(42)
+
+# 模擬更真實的臨床情境：醫師傾向開新藥給年輕、健康的病人
+# 治療組：較年輕
+n_treat <- 150
+n_ctrl <- 150
+
+# 治療組年齡較低（醫師偏好）
+age_treat <- round(rnorm(n_treat, 52, 10))
+age_ctrl <- round(rnorm(n_ctrl, 62, 10))
+
+# 治療組共病較少
+comorbidity_treat <- rpois(n_treat, 1.0)
+comorbidity_ctrl <- rpois(n_ctrl, 2.5)
+
+df_workflow <- data.frame(
+  age = c(age_treat, age_ctrl),
+  comorbidity = c(comorbidity_treat, comorbidity_ctrl),
+  treatment = factor(
+    c(rep(1, n_treat), rep(0, n_ctrl)),
+    labels = c("對照組", "治療組")
+  ),
+  treatment_num = c(rep(1, n_treat), rep(0, n_ctrl))
+)
+
+# 計算 PS（用 logistic regression）
+ps_model <- glm(
+  treatment_num ~ age + comorbidity,
+  data = df_workflow,
+  family = binomial
+)
+df_workflow$ps <- predict(ps_model, type = "response")
+
+# 創建 5 個子圖
+library(patchwork)
+
+# Step 1: 原始不平衡 - 年齡分布差異明顯
+p1 <- ggplot(df_workflow, aes(x = age, fill = treatment)) +
+  geom_density(alpha = 0.6) +
+  scale_fill_manual(
+    values = c("對照組" = colors$control, "治療組" = colors$treatment)
+  ) +
+  labs(
+    title = "Step 1: 原始資料（不平衡）",
+    x = "年齡",
+    y = "Density",
+    fill = ""
+  ) +
+  theme_causal(base_size = 12) +
+  theme(legend.position = "bottom")
+
+# Step 2: 計算 PS - 顯示年齡如何預測 PS
+p2 <- ggplot(df_workflow, aes(x = age, y = ps, color = treatment)) +
+  geom_point(alpha = 0.6, size = 1.5) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 1.2) +
+  scale_color_manual(
+    values = c("對照組" = colors$control, "治療組" = colors$treatment)
+  ) +
+  labs(
+    title = "Step 2: 計算 PS",
+    x = "年齡",
+    y = "Propensity Score",
+    color = ""
+  ) +
+  theme_causal(base_size = 12) +
+  theme(legend.position = "bottom")
+
+# Step 3: 檢查重疊 - PS 分布有重疊
+p3 <- ggplot(df_workflow, aes(x = ps, fill = treatment)) +
+  geom_density(alpha = 0.6) +
+  scale_fill_manual(
+    values = c("對照組" = colors$control, "治療組" = colors$treatment)
+  ) +
+  labs(
+    title = "Step 3: 檢查重疊",
+    x = "Propensity Score",
+    y = "Density",
+    fill = ""
+  ) +
+  theme_causal(base_size = 12) +
+  theme(legend.position = "bottom")
+
+# Step 4: SMD 改善 - 從實際資料計算
+mean_age_treat <- mean(df_workflow$age[df_workflow$treatment_num == 1])
+mean_age_ctrl <- mean(df_workflow$age[df_workflow$treatment_num == 0])
+sd_age <- sd(df_workflow$age)
+smd_age_before <- abs(mean_age_treat - mean_age_ctrl) / sd_age
+
+mean_comor_treat <- mean(df_workflow$comorbidity[
+  df_workflow$treatment_num == 1
+])
+mean_comor_ctrl <- mean(df_workflow$comorbidity[df_workflow$treatment_num == 0])
+sd_comor <- sd(df_workflow$comorbidity)
+smd_comor_before <- abs(mean_comor_treat - mean_comor_ctrl) / sd_comor
+
+smd_data <- data.frame(
+  variable = c("年齡", "共病數"),
+  before = round(c(smd_age_before, smd_comor_before), 2),
+  after = c(0.05, 0.04) # 加權後假設平衡良好
+)
+smd_long <- tidyr::pivot_longer(
+  smd_data,
+  cols = c(before, after),
+  names_to = "timing",
+  values_to = "smd"
+)
+smd_long$timing <- factor(
+  smd_long$timing,
+  levels = c("before", "after"),
+  labels = c("加權前", "加權後")
+)
+
+p4 <- ggplot(
+  smd_long,
+  aes(x = smd, y = variable, color = timing, shape = timing)
+) +
+  geom_point(size = 4) +
+  geom_vline(xintercept = 0.1, linetype = "dashed", color = "red") +
+  scale_color_manual(
+    values = c("加權前" = colors$fragile, "加權後" = colors$robust)
+  ) +
+  scale_x_continuous(limits = c(0, 1.2)) +
+  labs(
+    title = "Step 4: 加權後平衡",
+    x = "SMD",
+    y = "",
+    color = "",
+    shape = ""
+  ) +
+  theme_causal(base_size = 12) +
+  theme(legend.position = "bottom")
+
+# Step 5: 估計效果 - 原始差異 vs 調整後
+effect_data <- data.frame(
+  method = c(
+    "原始差異
+（有偏誤）",
+    "TMLE 估計
+（校正後）"
+  ),
+  estimate = c(-0.20, -0.08),
+  ci_lo = c(-0.28, -0.14),
+  ci_hi = c(-0.12, -0.02)
+)
+effect_data$method <- factor(
+  effect_data$method,
+  levels = c(
+    "原始差異
+（有偏誤）",
+    "TMLE 估計
+（校正後）"
+  )
+)
+
+p5 <- ggplot(effect_data, aes(x = method, y = estimate, color = method)) +
+  geom_hline(yintercept = 0, linetype = "solid", color = "gray50") +
+  geom_pointrange(
+    aes(ymin = ci_lo, ymax = ci_hi),
+    size = 1.2,
+    linewidth = 1.5
+  ) +
+  scale_color_manual(
+    values = c(
+      "原始差異
+（有偏誤）" = colors$fragile,
+      "TMLE 估計
+（校正後）" = colors$robust
+    )
+  ) +
+  scale_y_continuous(limits = c(-0.35, 0.05)) +
+  labs(title = "Step 5: 估計因果效應", x = "", y = "Risk Difference") +
+  theme_causal(base_size = 12) +
+  theme(legend.position = "none")
+
+# 組合
+(p1 | p2 | p3) /
+  (p4 | p5) +
+  plot_annotation(
+    title = "因果推論分析流程",
+    theme = theme(
+      plot.title = element_text(
+        size = 18,
+        face = "bold",
+        family = "openhuninn",
+        hjust = 0.5
+      )
+    )
+  )
+```
+
+::: {.fragment}
+**從資料到結論**：每一步都要檢查，不是跑完程式就結束！
+:::
+
+::: {.notes}
+這張圖展示完整的分析流程。從原始不平衡的資料開始，計算 PS，檢查重疊，加權後確認平衡，最後估計因果效應。注意原始差異和 TMLE 估計的差別——這就是調整混淆因子的效果。
+:::
+
+```{r}
+#| label: setup-tmle
+#| include: false
+#| cache: true
+
+# 載入套件
+library(tmle)
+library(SuperLearner)
+library(dplyr)
+
+# 定義 Super Learner 庫（小樣本用保守設定）
+SL.lib <- c("SL.glm", "SL.glmnet")
+
+# 載入資料
+df_cont <- read.csv("data/df_continuous.csv")
+df_bin <- read.csv("data/df_binary.csv")
+df_surv <- read.csv("data/df_survival.csv")
+```
+
+## Vibe Coding: 連續結果
+
+請 AI 幫你完成這段分析，你可以這樣說：
+
+> 「請讀取 `data/df_continuous.csv`，這是一個降血壓藥物的觀察性研究資料。治療變數是 `treatment`，結果是 `outcome`（血壓變化，mmHg），混淆因子有 `age`, `sex`, `comorbidity`, `severity`。請用 TMLE 方法估計平均治療效果（ATE），並使用 Super Learner 組合 GLM 和 GLMNet 模型。」
+
+::: {.notes}
+這是「Vibe Coding」的示範——用自然語言描述你要做什麼，讓 AI 幫你寫程式碼。這個 prompt 包含了所有必要資訊：資料位置、變數名稱、方法選擇。接下來看實際的程式碼。
+:::
+
+## 連續結果：程式碼
+
+```{.r}
+library(tmle)
+library(SuperLearner)
+
+SL.lib <- c("SL.glm", "SL.glmnet")
+
+df <- read.csv("data/df_continuous.csv")
+
+fit_cont <- tmle(
+  Y = df$outcome,
+  A = df$treatment,
+  W = df %>% select(age, sex, comorbidity, severity),
+  Q.SL.library = SL.lib,
+  g.SL.library = SL.lib,
+  family = "gaussian"
+)
+
+fit_cont$estimates$ATE
+```
+
+::: {.fragment .current-only data-code-focus="1-2"}
+載入 `tmle` 和 `SuperLearner` 套件，這是雙重穩健估計的核心工具。
+:::
+
+::: {.fragment .current-only data-code-focus="4"}
+定義 Super Learner 的候選模型庫：GLM（線性）+ GLMNet（正則化）。小樣本建議保守設定。
+:::
+
+::: {.fragment .current-only data-code-focus="6-13"}
+執行 TMLE：`Y` 是結果、`A` 是治療、`W` 是混淆因子。`Q.SL.library` 用於結果模型，`g.SL.library` 用於 PS 模型。
+:::
+
+::: {.fragment .current-only data-code-focus="15"}
+提取 ATE 估計值，包含點估計和 95% 信賴區間。
+:::
+
+## 連續結果：執行結果
+
+```{r}
+#| label: tmle-continuous
+#| echo: false
+#| cache: true
+
+fit_cont <- tmle(
+  Y = df_cont$outcome,
+  A = df_cont$treatment,
+  W = df_cont %>% select(age, sex, comorbidity, severity),
+  Q.SL.library = SL.lib,
+  g.SL.library = SL.lib,
+  family = "gaussian"
+)
+```
+
+```{r}
+#| label: tmle-continuous-result
+#| echo: false
+
+library(gt)
+
+data.frame(
+  Estimand = "ATE",
+  Estimate = round(fit_cont$estimates$ATE$psi, 2),
+  `95% CI` = paste0(
+    "(",
+    round(fit_cont$estimates$ATE$CI[1], 2),
+    ", ",
+    round(fit_cont$estimates$ATE$CI[2], 2),
+    ")"
+  ),
+  `p-value` = format.pval(fit_cont$estimates$ATE$pvalue, digits = 3),
+  check.names = FALSE
+) |>
+  gt() |>
+  tab_header(title = "TMLE 估計結果：連續結果") |>
+  tab_options(
+    table.font.size = px(18),
+    heading.title.font.size = px(22)
+  )
+```
+
+::: {.fragment}
+**解讀**：治療組平均血壓下降比對照組多約 `r round(fit_cont$estimates$ATE$psi, 1)` mmHg
+:::
+
+::: {.notes}
+這是連續結果的分析結果。ATE 是治療效果的點估計，CI 是 95% 信賴區間。如果信賴區間不包含 0，就是統計顯著。解讀時要用臨床意義來判斷效果是否有意義。
+:::
+
+## Vibe Coding: 二元結果
+
+請 AI 幫你完成這段分析，你可以這樣說：
+
+> 「請讀取 `data/df_binary.csv`，這是一個癌症治療的觀察性研究資料。治療變數是 `treatment`，結果是 `death`（0/1），混淆因子有 `age`, `sex`, `comorbidity`, `severity`。請用 TMLE 方法估計 Risk Difference 和 Risk Ratio。」
+
+## 二元結果：程式碼
+
+```{.r}
+fit_bin <- tmle(
+  Y = df$death,
+  A = df$treatment,
+  W = df %>% select(age, sex, comorbidity, severity),
+  Q.SL.library = SL.lib,
+  g.SL.library = SL.lib,
+  family = "binomial"
+)
+
+fit_bin$estimates$ATE # Risk Difference
+fit_bin$estimates$RR # Risk Ratio
+```
+
+::: {.fragment .current-only data-code-focus="1-8"}
+二元結果只需改兩處：`Y` 改成 0/1 變數（如死亡），`family` 改成 `"binomial"`。
+:::
+
+::: {.fragment .current-only data-code-focus="10-11"}
+二元結果可以提取 **Risk Difference**（風險差）和 **Risk Ratio**（相對風險）兩種 estimand。
+:::
+
+## 二元結果：執行結果
+
+```{r}
+#| label: tmle-binary
+#| echo: false
+#| cache: true
+
+fit_bin <- tmle(
+  Y = df_bin$death,
+  A = df_bin$treatment,
+  W = df_bin %>% select(age, sex, comorbidity, severity),
+  Q.SL.library = SL.lib,
+  g.SL.library = SL.lib,
+  family = "binomial"
+)
+```
+
+```{r}
+#| label: tmle-binary-result
+#| echo: false
+
+data.frame(
+  Estimand = c("Risk Difference", "Risk Ratio"),
+  Estimate = c(
+    round(fit_bin$estimates$ATE$psi, 3),
+    round(fit_bin$estimates$RR$psi, 2)
+  ),
+  `95% CI` = c(
+    paste0(
+      "(",
+      round(fit_bin$estimates$ATE$CI[1], 3),
+      ", ",
+      round(fit_bin$estimates$ATE$CI[2], 3),
+      ")"
+    ),
+    paste0(
+      "(",
+      round(fit_bin$estimates$RR$CI[1], 2),
+      ", ",
+      round(fit_bin$estimates$RR$CI[2], 2),
+      ")"
+    )
+  ),
+  `p-value` = c(
+    format.pval(fit_bin$estimates$ATE$pvalue, digits = 3),
+    format.pval(fit_bin$estimates$RR$pvalue, digits = 3)
+  ),
+  check.names = FALSE
+) |>
+  gt() |>
+  tab_header(title = "TMLE 估計結果：二元結果") |>
+  tab_options(
+    table.font.size = px(18),
+    heading.title.font.size = px(22)
+  )
+```
+
+::: {.fragment}
+**解讀**：治療降低死亡風險約 `r round(abs(fit_bin$estimates$ATE$psi) * 100, 1)`%（RD = `r round(fit_bin$estimates$ATE$psi, 3)`）
+:::
+
+::: {.notes}
+二元結果有兩種 estimand：Risk Difference 和 Risk Ratio。RD 是風險的絕對差異，RR 是相對差異。報告時兩個都可以報，但要說清楚用的是哪一個。臨床上 RD 比較直觀，政策制定時常用 RR。
+:::
+
+## Vibe Coding: 存活結果
+
+請 AI 幫你完成這段分析，你可以這樣說：
+
+> 「請讀取 `data/df_survival.csv`，這是一個存活分析資料。治療變數是 `treatment`，追蹤時間是 `time`，事件指標是 `event`（1=死亡，0=設限），混淆因子有 `age`, `sex`, `comorbidity`, `severity`。請用 IPW 加權的 Cox 迴歸估計 Hazard Ratio。」
+
+## 存活結果：TMLE 方法
+
+```{.r}
+library(survtmle)
+
+fit_surv <- survtmle(
+  ftime = df$time,
+  ftype = df$event,
+  trt = df$treatment,
+  adjustVars = df %>% select(age, sex, comorbidity, severity),
+  t0 = 365,
+  SL.ftime = SL.lib,
+  SL.ctime = SL.lib,
+  SL.trt = SL.lib,
+  method = "hazard"
+)
+```
+
+::: {.fragment .current-only data-code-focus="1"}
+存活分析需要專用的 `survtmle` 套件。
+:::
+
+::: {.fragment .current-only data-code-focus="4-6"}
+`ftime` 是追蹤時間、`ftype` 是事件指標（1=事件，0=設限）、`trt` 是治療變數。
+:::
+
+::: {.fragment .current-only data-code-focus="7-8"}
+`adjustVars` 放混淆因子，`t0` 指定要估計的時間點（如 365 天）。
+:::
+
+::: {.fragment .current-only data-code-focus="9-12"}
+三個 Super Learner 庫分別用於：事件時間模型、設限時間模型、治療模型。
+:::
+
+## 存活結果：IPW 替代方法
+
+```{.r}
+library(survival)
+library(WeightIt)
+
+# 計算 PS 權重
+w <- weightit(
+  treatment ~ age + sex + comorbidity + severity,
+  data = df_surv,
+  method = "ps"
+)
+
+# 加權 Cox 迴歸
+fit_cox <- coxph(
+  Surv(time, event) ~ treatment,
+  data = df_surv,
+  weights = w$weights
+)
+```
+
+::: {.fragment .current-only data-code-focus="1-2"}
+使用 `survival` 做存活分析，`WeightIt` 計算傾向分數權重。
+:::
+
+::: {.fragment .current-only data-code-focus="4-5"}
+用 `weightit()` 估計 PS 並計算 IPW 權重。
+:::
+
+::: {.fragment .current-only data-code-focus="7-8"}
+將權重帶入 `coxph()`，估計加權後的 Hazard Ratio。
+:::
+
+## 存活結果：執行結果
+
+```{r}
+#| label: survival-ipw
+#| echo: false
+#| cache: true
+#| message: false
+
+library(survival)
+library(WeightIt)
+
+# 計算 PS 權重
+w_surv <- weightit(
+  treatment ~ age + sex + comorbidity + severity,
+  data = df_surv,
+  method = "ps"
+)
+
+# 加權 Cox 迴歸
+fit_cox <- coxph(
+  Surv(time, event) ~ treatment,
+  data = df_surv,
+  weights = w_surv$weights
+)
+```
+
+```{r}
+#| label: survival-ipw-result
+#| echo: false
+
+cox_summary <- summary(fit_cox)
+
+data.frame(
+  Estimand = "Hazard Ratio",
+  Estimate = round(cox_summary$conf.int[1, "exp(coef)"], 2),
+  `95% CI` = paste0(
+    "(",
+    round(cox_summary$conf.int[1, "lower .95"], 2),
+    ", ",
+    round(cox_summary$conf.int[1, "upper .95"], 2),
+    ")"
+  ),
+  `p-value` = format.pval(cox_summary$coefficients[1, "Pr(>|z|)"], digits = 3),
+  check.names = FALSE
+) |>
+  gt() |>
+  tab_header(title = "IPW Cox 迴歸結果：存活結果") |>
+  tab_options(
+    table.font.size = px(18),
+    heading.title.font.size = px(22)
+  )
+```
+
+::: {.fragment}
+**解讀**：加權後 HR = `r round(exp(coef(fit_cox)), 2)`，表示治療組的死亡風險是對照組的 `r round(exp(coef(fit_cox)) * 100, 0)`%
+:::
+
+::: {.notes}
+存活分析用 IPW 加權的 Cox 迴歸是一種替代方法，比較容易理解和實作。HR 小於 1 表示治療降低風險。注意這是 IPW 方法，不是雙重穩健，所以結果可能比較不穩定。如果要更穩健的結果，可以用 survtmle 套件。
+:::
+
+## Vibe Coding: 平衡診斷
+
+請 AI 幫你完成這段分析，你可以這樣說：
+
+> 「我已經用 `WeightIt` 計算了傾向分數權重。請用 `cobalt` 套件幫我檢查平衡：(1) 用 `bal.tab()` 列出所有變數的 SMD，閾值設 0.1；(2) 用 `love.plot()` 畫出加權前後的 SMD 比較圖。」
+
+## 平衡診斷：程式碼
+
+```{.r}
+library(cobalt)
+library(WeightIt)
+
+w <- weightit(
+  treatment ~ age + sex + comorbidity + severity,
+  data = df,
+  method = "ps"
+)
+
+# SMD 檢查
+bal.tab(w, thresholds = c(m = 0.1))
+
+# 視覺化
+love.plot(w, thresholds = c(m = 0.1))
+```
+
+::: {.fragment .current-only data-code-focus="1-2"}
+`cobalt` 用於平衡診斷，`WeightIt` 用於計算傾向分數權重。
+:::
+
+::: {.fragment .current-only data-code-focus="4-8"}
+用 `weightit()` 計算權重：公式指定混淆因子，`method = "ps"` 使用 logistic regression 估計 PS。
+:::
+
+::: {.fragment .current-only data-code-focus="10-11"}
+`bal.tab()` 檢查 SMD，設定閾值 0.1，超過表示平衡不佳。
+:::
+
+::: {.fragment .current-only data-code-focus="13-14"}
+`love.plot()` 畫出 Love Plot，視覺化加權前後的 SMD 變化。
+:::
+
+## 平衡診斷：執行結果
+
+```{r}
+#| label: balance-check
+#| echo: false
+#| cache: true
+#| message: false
+
+library(cobalt)
+library(WeightIt)
+
+# 計算 PS 權重
+w_bal <- weightit(
+  treatment ~ age + sex + comorbidity + severity,
+  data = df_bin,
+  method = "ps",
+  estimand = "ATE"
+)
+```
+
+```{r}
+#| label: balance-table
+#| echo: false
+#| message: false
+
+# 使用 cobalt 的 bal.tab 正確計算 SMD
+library(cobalt)
+
+bal_out <- bal.tab(
+  w_bal,
+  un = TRUE,
+  disp.v.ratio = FALSE,
+  disp.ks = FALSE
+)
+
+# 提取 balance 數據
+bal_df <- bal_out$Balance
+bal_df <- bal_df[!grepl("prop.score", rownames(bal_df)), ]
+
+var_labels <- c("年齡", "性別", "共病數", "嚴重度")
+
+# 從 bal_df 取得正確的 SMD 值
+smd_unadj <- bal_df$Diff.Un
+smd_adj <- bal_df$Diff.Adj
+
+data.frame(
+  變數 = var_labels,
+  `加權前 SMD` = round(smd_unadj, 3),
+  `加權後 SMD` = round(smd_adj, 3),
+  `通過閾值` = ifelse(abs(smd_adj) < 0.1, "✓", "✗"),
+  check.names = FALSE
+) |>
+  gt() |>
+  tab_header(title = "平衡診斷：SMD 比較") |>
+  cols_align(
+    align = "center",
+    columns = c("加權前 SMD", "加權後 SMD", "通過閾值")
+  ) |>
+  tab_style(
+    style = cell_text(color = "green", weight = "bold"),
+    locations = cells_body(columns = "通過閾值", rows = `通過閾值` == "✓")
+  ) |>
+  tab_style(
+    style = cell_text(color = "red", weight = "bold"),
+    locations = cells_body(columns = "通過閾值", rows = `通過閾值` == "✗")
+  ) |>
+  tab_options(
+    table.font.size = px(16),
+    heading.title.font.size = px(20)
+  )
+```
+
+::: {.fragment}
+**怎麼看這張表？**
+
+- **SMD**（Standardized Mean Difference）：衡量兩組差異的指標
+- **加權前**：原始資料中兩組的差異（通常不平衡）
+- **加權後**：IPW 調整後的差異（目標 < 0.1）
+- **✓ 通過**：SMD < 0.1，表示該變數已平衡
+:::
+
+::: {.notes}
+這張表是平衡診斷的核心。看加權前後 SMD 的變化——加權後應該都要小於 0.1。如果有任何變數沒通過，要回去檢查模型或資料。這一步非常重要，審稿者一定會看。
+:::
+
+## 平衡診斷：Love Plot
+
+```{r}
+#| label: love-plot-real
+#| echo: false
+#| fig-width: 8
+#| fig-height: 5
+#| message: false
+
+library(cobalt)
+
+cobalt::love.plot(
+  w_bal,
+  binary = "std",
+  thresholds = c(m = 0.1),
+  colors = c(colors$treatment, colors$control),
+  shapes = c(19, 17),
+  sample.names = c("加權前", "加權後")
+) +
+  theme_causal()
+```
+
+::: {.fragment}
+**怎麼看 Love Plot？**
+
+- **圓點**：加權前的 SMD（通常偏右，不平衡）
+- **三角形**：加權後的 SMD（目標在虛線左側）
+- **紅色虛線**：SMD = 0.1 的閾值
+- **好的結果**：所有三角形都在虛線左側
+:::
+
+::: {.notes}
+Love Plot 是平衡診斷的標準圖形。圓點是加權前的 SMD，三角形是加權後。紅色虛線是 0.1 的閾值。好的結果是所有三角形都在虛線左側——表示加權後所有變數都平衡了。
+:::
+
+## Love Plot：更多變數範例
+
+```{r}
+#| echo: false
+#| fig-width: 8
+#| fig-height: 5
+
+set.seed(123)
+
+# Simulate SMD data before and after weighting (更多變數的情境)
+vars <- c("年齡", "性別", "共病數", "嚴重度", "BMI", "抽菸", "糖尿病", "高血壓")
+smd_before <- c(0.35, 0.22, 0.41, 0.28, 0.15, 0.33, 0.25, 0.19)
+smd_after <- c(0.05, 0.03, 0.08, 0.04, 0.02, 0.06, 0.04, 0.03)
+
+df_smd <- data.frame(
+  variable = rep(vars, 2),
+  smd = c(smd_before, smd_after),
+  timing = factor(
+    rep(c("加權前", "加權後"), each = length(vars)),
+    levels = c("加權前", "加權後")
+  )
+)
+
+ggplot(
+  df_smd,
+  aes(x = smd, y = reorder(variable, smd), color = timing, shape = timing)
+) +
+  geom_point(size = 4) +
+  geom_vline(
+    xintercept = 0.1,
+    linetype = "dashed",
+    color = "red",
+    linewidth = 1
+  ) +
+  scale_color_manual(
+    values = c("加權前" = colors$treatment, "加權後" = colors$control)
+  ) +
+  labs(
+    x = "Standardized Mean Difference (SMD)",
+    y = "",
+    color = "",
+    shape = ""
+  ) +
+  annotate(
+    "text",
+    x = 0.12,
+    y = 2,
+    label = "閾值 0.1",
+    color = "red",
+    hjust = 0,
+    family = "openhuninn",
+    size = 5
+  ) +
+  theme_causal()
+```
+
+::: {.fragment}
+**目標**：加權後所有 SMD < 0.1
+:::
+
+## PS 重疊檢查
+
+```r
+ggplot(df, aes(x = ps, fill = factor(treatment))) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Propensity Score Overlap")
+```
+
+## 權重診斷（很重要！）
+
+::: {.callout-warning appearance="minimal"}
+## 為什麼要檢查權重？
+極端權重 = 少數人主導估計 = 結果不可信
+:::
+
+```r
+# 檢查權重分布
+summary(w$weights)
+
+# 最大權重（不要太大）
+max(w$weights)
+
+# 有效樣本量（不要掉太多）
+sum(w$weights)^2 / sum(w$weights^2)
+```
+
+## 有效樣本量 (Effective Sample Size)
+
+::: {.columns}
+::: {.column width="50%"}
+**原始樣本量**：500 人
+
+**加權後有效樣本量**：
+
+$$n_{eff} = rac{(\sum w_i)^2}{\sum w_i^2}$$
+:::
+::: {.column width="50%"}
+**解讀**
+
+- $n_{eff}$ ≈ 原始 N → 權重均勻，好
+- $n_{eff}$ << 原始 N → 少數人主導，警告！
+:::
+:::
+
+::: {.fragment}
+### 經驗法則
+
+> 有效樣本量掉到原始的 50% 以下，要小心解讀結果
+:::
+
+::: {.notes}
+有效樣本量告訴你加權後「等效」有多少人。如果原始 500 人，有效樣本量只剩 100 人，表示少數人主導了估計。這時候結果會很不穩定。經驗法則是有效樣本量不要掉到原始的 50% 以下。
+:::
+
+## 診斷清單（審稿者會看！）
+
+| 診斷項目 | 目標 | R 函數 |
+|----------|------|--------|
+| SMD | 全部 < 0.1 | `cobalt::bal.tab()` |
+| PS 重疊 | 充分重疊 | 密度圖 |
+| 最大權重 | 不要太極端 | `max(weights)` |
+| 有效樣本量 | 不要掉太多 | 公式計算 |
+
+::: {.fragment}
+**報告時務必呈現這四項！**
+:::
+
+::: {.notes}
+這四項診斷審稿者一定會看。SMD 全部小於 0.1、PS 重疊充分、權重沒有極端值、有效樣本量沒掉太多。如果有任何一項不符合，要在論文裡討論並說明處理方法。
+:::
+
+## 小結：R 實作
+
+完成分析後，你應該有：
+
+| 項目 | 確認 |
+|------|------|
+| TMLE 估計值 | ✅ ATE 和 95% CI |
+| 平衡診斷 | ✅ SMD < 0.1 |
+| PS 重疊 | ✅ 兩組有足夠重疊 |
+
+::: {.fragment}
+> **但是**...就算一切都做對了，還有一個問題：**未測量的混淆因子**
+:::
+
+::: {.notes}
+到這裡 R 實作的部分結束。但有一個問題：再好的方法也無法處理「沒有測量到的混淆因子」。接下來會教大家如何用敏感度分析來評估這個風險。
+:::
+
+## ✅ 檢查清單 {.center}
+
+::: {.callout-warning appearance="minimal"}
+## 你的分析有沒有漏掉這些？
+
+在進入敏感度分析之前，確認：
+
+- [ ] 跑完 TMLE 得到估計值和 CI
+- [ ] 檢查 SMD，全部 < 0.1
+- [ ] 畫 PS overlap 圖，確認兩組有重疊
+- [ ] 檢查權重分布，沒有極端值
+- [ ] 計算有效樣本量，沒有掉太多
+:::
+
+::: {.fragment}
+**如果有任何一項不通過，回去檢查資料或模型！**
+:::
+
+::: {.notes}
+這是分析前的檢查清單。每一項都要確認。如果有任何一項不通過，不要急著報告結果——回去檢查資料或模型，找出問題在哪裡。這是負責任研究的基本原則。
+:::
+

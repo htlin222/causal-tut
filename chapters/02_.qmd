@@ -1,0 +1,355 @@
+# 第一部分：為什麼需要因果推論？ {data-stack-name="為什麼"}
+
+## 開場情境：一個「成功」的研究
+
+::: {.callout-note appearance="minimal"}
+## 某醫學中心回顧性研究報告
+「新藥 DrugX 顯著提升晚期癌症病人存活率」
+:::
+
+::: {.notes}
+讓我們從一個真實情境開始。這是一個典型的回顧性研究報告，看起來結果很漂亮。但問題是——這真的是藥效嗎？
+:::
+
+## 研究結果看起來很棒！
+
+| 組別 | 人數 | 一年存活率 | p-value |
+|:----:|:----:|:----------:|:-------:|
+| 新藥組 | 500 | **70%** | |
+| 傳統治療 | 500 | 50% | **< 0.001** |
+
+::: {.fragment}
+統計顯著、效果量大、樣本數夠...
+
+**可以發 paper 了嗎？**
+:::
+
+::: {.notes}
+p 值小於 0.001、效果量 20% 的差異、每組 500 人。從傳統統計的角度來看，這是一個「成功」的研究。但審稿者可能會問一個關鍵問題...
+:::
+
+## 等等，讓我們看看病人特徵...
+
+::: {.columns}
+::: {.column width="50%"}
+**新藥組**
+
+- 平均年齡：55 歲
+- ECOG 0-1：85%
+- 共病指數：1.2
+:::
+::: {.column width="50%"}
+**傳統治療組**
+
+- 平均年齡：68 歲
+- ECOG 0-1：45%
+- 共病指數：3.8
+:::
+:::
+
+::: {.fragment .fade-up}
+😱 **兩組根本不一樣！**
+:::
+
+::: {.notes}
+看到問題了嗎？新藥組平均年輕 13 歲、體能狀態好很多、共病也少很多。這不是公平的比較——醫師把新藥開給了「本來就比較健康」的病人。
+:::
+
+## 混淆效應視覺化：Simpson's Paradox
+
+```{r}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 5
+
+# Simpson's Paradox 風格的混淆效應展示
+set.seed(2024)
+
+# 模擬資料：輕症和重症病人的治療效果
+n_per_group <- 100
+
+# 輕症病人
+light_treated <- data.frame(
+  severity = "輕症",
+  treatment = "新藥",
+  survival = rbinom(n_per_group, 1, 0.85)
+)
+light_control <- data.frame(
+  severity = "輕症",
+  treatment = "傳統治療",
+  survival = rbinom(n_per_group * 0.3, 1, 0.80)
+)
+
+# 重症病人
+severe_treated <- data.frame(
+  severity = "重症",
+  treatment = "新藥",
+  survival = rbinom(n_per_group * 0.3, 1, 0.45)
+)
+severe_control <- data.frame(
+  severity = "重症",
+  treatment = "傳統治療",
+  survival = rbinom(n_per_group, 1, 0.40)
+)
+
+df_simpson <- rbind(
+  light_treated,
+  light_control,
+  severe_treated,
+  severe_control
+)
+
+# 計算分層存活率
+summary_by_severity <- aggregate(
+  survival ~ severity + treatment,
+  df_simpson,
+  mean
+)
+summary_overall <- aggregate(survival ~ treatment, df_simpson, mean)
+summary_overall$severity <- "整體（未分層）"
+
+combined <- rbind(summary_by_severity, summary_overall)
+combined$severity <- factor(
+  combined$severity,
+  levels = c("整體（未分層）", "輕症", "重症")
+)
+
+ggplot(combined, aes(x = treatment, y = survival * 100, fill = treatment)) +
+  geom_col(position = "dodge", width = 0.7) +
+  geom_text(
+    aes(label = sprintf("%.0f%%", survival * 100)),
+    vjust = -0.5,
+    size = 5,
+    family = "openhuninn"
+  ) +
+  facet_wrap(~severity, ncol = 3) +
+  scale_fill_manual(
+    values = c("新藥" = colors$treatment, "傳統治療" = colors$control)
+  ) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 25)) +
+  labs(
+    x = "",
+    y = "存活率 (%)",
+    fill = ""
+  ) +
+  theme_causal() +
+  theme(
+    strip.text = element_text(size = 14, face = "bold"),
+    legend.position = "none"
+  )
+```
+
+::: {.fragment}
+**觀察**：整體看起來新藥好很多，但分層後差異變小！
+:::
+
+::: {.notes}
+這就是 Simpson's Paradox - 整體的關聯方向可能跟分層後不同。醫師傾向開新藥給輕症病人，所以新藥組有更多輕症、存活率本來就高。
+:::
+
+## 真相大白
+
+::: {.incremental}
+- 醫師傾向開新藥給「狀況較好」的病人
+- 新藥組本來就會活比較久
+- 70% vs 50% 的差異，有多少是藥效？有多少是選擇偏誤？
+:::
+
+::: {.notes}
+這就是「選擇偏誤」的經典案例。臨床上很常見——醫師會根據病人狀況選擇治療，這個選擇本身就造成了兩組的系統性差異。
+:::
+
+::: {.fragment}
+### 核心問題
+
+> **觀察到的差異 ≠ 因果效應**
+:::
+
+## 關聯 vs 因果
+
+::: {.incremental}
+- **描述性問題**：「用新藥的人和沒用的人，結果有沒有不同？」
+- **因果性問題**：「如果讓同一群人用新藥 vs 不用，結果會不會不同？」
+- **核心困難**：反事實 (counterfactual) 永遠觀察不到
+:::
+
+::: {.notes}
+這是因果推論的核心區別。描述性分析只是「報告觀察到的差異」，但因果推論要回答「如果介入會怎樣」。注意第二個問題的關鍵詞是「同一群人」——這就是反事實的概念。
+:::
+
+## 反事實：我們永遠只看到一半
+
+```{r}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 5
+
+library(ggplot2)
+
+# 建立反事實概念的資料
+patient_data <- data.frame(
+  patient = rep(c("病人 A", "病人 B", "病人 C"), each = 2),
+  scenario = rep(c("實際觀察", "反事實"), 3),
+  treatment = c(
+    "用新藥",
+    "不用新藥", # A
+    "不用新藥",
+    "用新藥", # B
+    "用新藥",
+    "不用新藥"
+  ), # C
+  outcome = c(
+    1,
+    NA, # A: 用新藥，存活；如果不用呢？未知
+    0,
+    NA, # B: 不用新藥，死亡；如果用呢？未知
+    1,
+    NA
+  ), # C: 用新藥，存活；如果不用呢？未知
+  observed = c(TRUE, FALSE, TRUE, FALSE, TRUE, FALSE)
+)
+
+patient_data$outcome_label <- ifelse(
+  is.na(patient_data$outcome),
+  "?",
+  ifelse(patient_data$outcome == 1, "存活", "死亡")
+)
+patient_data$treatment <- factor(
+  patient_data$treatment,
+  levels = c("用新藥", "不用新藥")
+)
+patient_data$scenario <- factor(
+  patient_data$scenario,
+  levels = c("實際觀察", "反事實")
+)
+
+ggplot(patient_data, aes(x = scenario, y = patient)) +
+  geom_tile(
+    aes(fill = observed),
+    color = "white",
+    linewidth = 2,
+    width = 0.9,
+    height = 0.8
+  ) +
+  geom_text(
+    aes(label = paste0(treatment, "
+", outcome_label)),
+    size = 5,
+    family = "openhuninn",
+    color = ifelse(patient_data$observed, "white", "gray40")
+  ) +
+  scale_fill_manual(
+    values = c("TRUE" = colors$accent, "FALSE" = "gray90"),
+    guide = "none"
+  ) +
+  labs(x = "", y = "") +
+  theme_causal() +
+  theme(
+    axis.text = element_text(size = 14),
+    panel.grid = element_blank()
+  )
+```
+
+::: {.fragment}
+**因果推論的核心問題**：我們想知道「?」是什麼，但永遠無法直接觀察
+:::
+
+::: {.notes}
+這張圖是因果推論的核心困境。每個病人我們只能觀察到一種結果——用藥或不用藥。另一個結果永遠是問號。RCT 的隨機化讓我們可以用「另一組人」來估計反事實；觀察性研究要用統計方法來模擬這個過程。
+:::
+
+## 經典謬誤案例
+
+| 觀察到的關聯 | 真正的原因 |
+|:------------|:----------|
+| 🍦 冰淇淋銷量 ↑ → 溺水死亡 ↑ | 夏天（天氣熱）|
+| 🏥 住院病人死亡率 > 在家 | 病重才住院 |
+| 👟 鞋子尺寸大 → 閱讀能力強 | 年齡（小孩長大）|
+| 🌡️ 黃色手指 → 肺癌風險 ↑ | 抽菸 |
+
+::: {.fragment}
+**這些都是「混淆」造成的假象！**
+:::
+
+::: {.notes}
+這些例子大家可能都聽過。冰淇淋和溺水都是因為夏天熱。鞋子大和閱讀能力強都是因為年齡大。這些「相關」不代表因果，但在論文裡我們經常忘記這個道理。
+:::
+
+## 臨床常見陷阱
+
+::: {.incremental}
+- **用 statin 的人心血管事件少** → 但他們本來就比較注重健康
+- **做篩檢的人存活較久** → Lead-time bias + 健康者偏誤
+- **ICU 用某藥的病人死亡率高** → 因為病情嚴重才用
+- **術後早期下床的病人恢復快** → 恢復好的才能下床
+:::
+
+::: {.fragment}
+### 關鍵思考
+
+> 是「治療 → 結果」，還是「某因素 → 治療 & 結果」？
+:::
+
+::: {.notes}
+這四個例子都是臨床研究的常見陷阱。關鍵是問自己：是治療造成結果，還是有第三個因素同時影響了治療選擇和結果？這個問題要用 DAG 來想會更清楚，等一下會教。
+:::
+
+## 混淆的問題
+
+::: {.columns}
+::: {.column width="50%"}
+**為什麼直接比較會有偏誤？**
+
+醫師傾向開新藥給較輕症的病人
+
+→ 新藥組本來就會比較好
+:::
+::: {.column width="50%"}
+```{mermaid}
+%%| fig-width: 4
+flowchart TD
+    C[病人嚴重度] --> A[治療選擇]
+    C --> Y[結果]
+    A -.->|?| Y
+```
+:::
+:::
+
+::: {.notes}
+這是第一個 DAG 圖。C 是混淆因子，同時影響 A（治療選擇）和 Y（結果）。虛線箭頭是我們想知道的因果效應。如果不處理 C，我們觀察到的 A 和 Y 的關係會被 C 污染。
+:::
+
+## 小結：為什麼需要因果推論？
+
+::: {.incremental}
+1. 觀察性資料中，**關聯 ≠ 因果**
+2. 混淆因子會讓我們得到錯誤的結論
+3. 我們需要特殊方法來「模擬」隨機分配的效果
+:::
+
+::: {.fragment}
+> **下一步**：那要怎麼設計研究，才能回答因果問題呢？
+:::
+
+::: {.notes}
+記住這三個重點。觀察性研究不是不能做因果推論，但需要特殊方法。接下來會教大家怎麼設計研究問題，這是最重要的第一步。
+:::
+
+## 💭 思考時間 {.center}
+
+::: {.callout-important appearance="minimal"}
+## 想一想你自己的研究
+
+1. 你想比較的「治療」是什麼？
+2. 你的資料是觀察性的嗎？
+3. 有哪些因素可能同時影響「誰接受治療」和「結果好壞」？
+:::
+
+::: {.fragment}
+把這些因素寫下來，等一下我們會用 DAG 來整理它們
+:::
+
+::: {.notes}
+這是今天第一個互動時間。請大家拿出紙筆，花 2-3 分鐘想想自己的研究。第三個問題最重要——那些因素就是你的潛在混淆因子。
+:::
+

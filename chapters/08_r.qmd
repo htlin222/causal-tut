@@ -1,0 +1,139 @@
+# R 快速入門 {data-stack-name="R 入門"}
+
+## 給不熟 R 的人
+
+::: {.callout-note appearance="minimal"}
+## 如果你已經會 R
+可以跳過這一段，直接進入實作！
+:::
+
+這一段會快速介紹：
+
+- 如何安裝需要的套件
+- 基本語法
+- 讀取資料
+
+::: {.notes}
+這一段是給 R 新手的快速入門。如果你已經會 R，可以趁這段時間休息一下。我們只會講最基本的語法，讓等一下的實作能夠順利進行。
+:::
+
+## 安裝 R 和 RStudio
+
+1. 下載 R：[https://cran.r-project.org/](https://cran.r-project.org/)
+2. 下載 RStudio：[https://posit.co/download/rstudio-desktop/](https://posit.co/download/rstudio-desktop/)
+
+::: {.fragment}
+::: {.callout-tip appearance="minimal"}
+## 建議
+RStudio 是寫 R 最方便的介面，強烈建議使用
+:::
+:::
+
+::: {.notes}
+如果你還沒裝 R，這兩個網址可以下載。先裝 R，再裝 RStudio。RStudio 是 IDE，會讓寫 R 方便很多。這裡不會現場示範安裝，但有問題可以課後問。
+:::
+
+## 安裝套件
+
+```r
+# 只需執行一次
+install.packages(c(
+  "tmle",
+  "SuperLearner",
+  "cobalt",
+  "WeightIt",
+  "ggplot2",
+  "dplyr"
+))
+
+# 每次使用前載入
+library(tmle)
+library(SuperLearner)
+```
+
+::: {.fragment}
+**提示**：安裝可能需要幾分鐘，請耐心等待
+:::
+
+::: {.notes}
+這些是今天會用到的套件。install.packages 只需要執行一次，之後每次用 library 載入就好。安裝時可能會問你要不要更新其他套件，通常選 Yes。
+:::
+
+## R 基本語法
+
+```r
+# 賦值（建立變數）
+x <- 10
+name <- "治療組"
+
+# 向量（多個值）
+ages <- c(45, 52, 67, 38)
+mean(ages) # 計算平均
+
+# Data frame（表格）
+df <- data.frame(
+  id = 1:4,
+  age = ages,
+  treatment = c(1, 1, 0, 0)
+)
+```
+
+::: {.notes}
+R 的基本語法很簡單。箭頭 <- 是賦值，c() 是建立向量，data.frame() 是建立表格。這三個會用到的語法記住就好。
+:::
+
+## 讀取資料
+
+```r
+# 從 CSV 檔讀取
+df <- read.csv("my_data.csv")
+
+# 查看資料結構
+head(df) # 前 6 筆
+str(df) # 變數類型
+summary(df) # 基本統計
+```
+
+::: {.notes}
+讀取 CSV 用 read.csv()。讀進來後，用 head() 看前幾筆、str() 看變數類型、summary() 看基本統計。這是資料探索的標準流程。
+:::
+
+## Pipe 運算子
+
+```r
+# 傳統寫法（難讀）
+result <- select(filter(df, age > 50), treatment, outcome)
+
+# Pipe 寫法（易讀）
+result <- df |>
+  filter(age > 50) |>
+  select(treatment, outcome)
+```
+
+::: {.fragment}
+**白話說**：`|>` 就是「然後」的意思，把左邊的結果傳給右邊
+:::
+
+::: {.notes}
+Pipe 運算子是現代 R 的寫法，讓程式碼更好讀。你可以把 |> 念成「然後」——拿資料，然後過濾，然後選欄位。等一下的範例會大量使用這個寫法。
+:::
+
+## 本次會用到的套件
+
+| 套件 | 用途 |
+|------|------|
+| `tmle` | TMLE 估計（連續/二元結果） |
+| `survtmle` | TMLE 估計（存活結果） |
+| `SuperLearner` | 模型組合 |
+| `cobalt` | 平衡診斷 |
+| `WeightIt` | 計算傾向分數權重 |
+| `ggplot2` | 畫圖 |
+
+::: {.fragment}
+> **準備好了？讓我們開始實作！**
+:::
+
+::: {.notes}
+這張表列出今天會用到的套件。最重要的是 tmle 和 SuperLearner——核心分析用。cobalt 和 WeightIt 用來診斷平衡。ggplot2 用來畫圖。準備好了嗎？接下來進入實作！
+:::
+

@@ -1,0 +1,532 @@
+# 第二部分：研究設計思維 {data-stack-name="設計思維"}
+
+## 本節重點
+
+在開始分析之前，你需要先想清楚：
+
+::: {.incremental}
+- 你到底想回答什麼問題？
+- 如果可以做 RCT，你會怎麼設計？
+- 哪些變數該調整，哪些不該調整？
+:::
+
+::: {.notes}
+這一節是整個課程最重要的部分。方法再好，問題設計錯了就沒用。我們要學習 Target Trial 框架和 DAG 因果圖。
+:::
+
+## Target Trial Emulation
+
+**核心概念**：「如果能做 RCT，你會怎麼設計？」
+
+::: {.fragment}
+用觀察性資料模擬那個理想試驗
+:::
+
+::: {.notes}
+Target Trial 是 Miguel Hernán 提出的框架。核心想法很簡單：先設計一個理想的 RCT，然後看你的觀察性資料能不能模擬它。這個思考過程會幫你避免很多設計錯誤。
+:::
+
+## 為什麼需要 Target Trial？
+
+::: {.incremental}
+- 很多重要問題 **無法** 做 RCT（倫理、成本、時間）
+- 觀察性研究常犯的錯：沒有明確的研究設計
+- Target Trial 強迫你思考：「我到底在問什麼問題？」
+:::
+
+::: {.fragment}
+> "If you can't describe the trial you're trying to emulate, you probably shouldn't be doing the analysis."
+> — Miguel Hernán
+:::
+
+::: {.notes}
+這句話是 Hernán 的名言。如果你沒辦法清楚描述你想模擬的 RCT，那你可能根本不清楚自己在問什麼問題。這是很嚴格的標準，但很有用。
+:::
+
+## RCT vs 觀察性研究
+
+| 步驟 | RCT | Target Trial Emulation |
+|:-----|:----|:-----------------------|
+| 定義資格條件 | Protocol 寫好 | 你要自己定義 |
+| 治療分配 | **隨機** | 觀察（需調整混淆）|
+| Time zero | 隨機分配時 | **你要明確定義** |
+| 追蹤 | Protocol 規定 | 資料庫限制 |
+| 分析 | ITT / Per-protocol | 模擬 ITT / Per-protocol |
+
+::: {.fragment}
+**關鍵差異**：RCT 的隨機化幫你處理混淆，觀察性研究要自己處理
+:::
+
+::: {.notes}
+這張表比較 RCT 和觀察性研究的對應步驟。注意「Time zero」這一項——在觀察性研究中，追蹤起點的定義特別重要，定義錯了會導致 immortal time bias。
+:::
+
+## Target Trial 實例
+
+::: {.callout-tip appearance="minimal"}
+## 研究問題：Statin 是否降低心血管死亡？
+:::
+
+::: {.columns}
+::: {.column width="50%"}
+**理想的 RCT**
+
+- 納入：40-75歲、高血脂
+- 隨機分配 statin vs placebo
+- 追蹤 5 年
+- 主要結局：CV 死亡
+:::
+::: {.column width="50%"}
+**用健保資料模擬**
+
+- 納入：同條件、首次診斷高血脂
+- 比較：開始用 statin vs 未使用
+- Time zero：診斷日
+- 追蹤至 CV 死亡或 5 年
+:::
+:::
+
+::: {.notes}
+這是一個具體的例子。左邊是理想的 RCT，右邊是用健保資料模擬的版本。注意 Time zero 定義為「診斷日」——這是讓兩組可比較的起點。
+:::
+
+## Target Trial 七要素
+
+| 要素 | 你要定義的 |
+|------|-----------|
+| 資格條件 | 誰可以納入？ |
+| 治療策略 | 新藥 vs 什麼？ |
+| 治療分配 | 病人如何被分組（觀察性）|
+| 追蹤起點 | Time zero 是什麼時候？ |
+| 結果 | 主要 outcome |
+| 追蹤期間 | 追多久？ |
+| 因果對比 | 要估計什麼？ATE? |
+
+::: {.notes}
+這七個要素是 Target Trial 的核心。寫論文時，Methods 段落應該要能清楚回答這七個問題。如果有任何一個不清楚，審稿者可能會質疑你的研究設計。
+:::
+
+## ⚠️ 常見陷阱：Immortal Time Bias
+
+::: {.callout-warning appearance="minimal"}
+## 不死時間偏差
+病人必須「活到某時間點」才被歸類為治療組，導致治療組看起來比較好
+:::
+
+::: {.columns}
+::: {.column width="50%"}
+**錯誤設計**
+
+- 住院第 3 天開始用藥 → 歸為治療組
+- 但前 3 天是「不死時間」
+- 治療組先天存活優勢！
+:::
+::: {.column width="50%"}
+**正確做法**
+
+- Time zero = 符合條件的時間點
+- 所有人從同一起點開始追蹤
+- 或用時間變動模型處理
+:::
+:::
+
+::: {.notes}
+Immortal time bias 是觀察性研究最常見的錯誤之一。經典例子：用藥組必須活到開始用藥那天才被納入，這段「不死時間」讓治療組看起來活得比較久。解決方法是仔細定義 Time zero。
+:::
+
+## DAG 因果圖（簡化版）
+
+**三種變數**：
+
+::: {.incremental}
+- **混淆因子** (Confounder)：該調整
+  - 年齡：影響用藥選擇，也影響預後
+  - 共病：醫師考量共病決定治療，共病也影響結果
+- **中介變數** (Mediator)：不該調整
+  - 血壓下降：降壓藥 → 血壓↓ → 心血管事件↓
+  - 血糖控制：糖尿病藥 → HbA1c↓ → 併發症↓
+- **碰撞變數** (Collider)：不該調整
+  - 住院：疾病嚴重 → 住院 ← 治療副作用
+  - 存活到某時點：好體質 → 存活 ← 有效治療
+:::
+
+::: {.notes}
+DAG 是因果推論最重要的工具。記住這三種變數：混淆因子要調整，中介變數和碰撞變數不能調整。接下來會用圖解釋為什麼。
+:::
+
+## DAG 視覺化：三種結構
+
+```{r}
+#| echo: false
+#| fig-width: 12
+#| fig-height: 4
+#| message: false
+
+library(ggdag)
+library(dagitty)
+library(patchwork)
+library(dplyr)
+
+# 定義三種 DAG 結構
+# Confounder
+dag_confounder <- dagify(
+  Y ~ A + C,
+  A ~ C,
+  coords = list(x = c(A = 0, C = 1, Y = 2), y = c(A = 0, C = 1, Y = 0)),
+  labels = c(A = "治療", C = "年齡", Y = "結果")
+)
+
+# Mediator
+dag_mediator <- dagify(
+  Y ~ M,
+  M ~ A,
+  coords = list(x = c(A = 0, M = 1, Y = 2), y = c(A = 0, M = 0, Y = 0)),
+  labels = c(A = "降壓藥", M = "血壓↓", Y = "心血管事件↓")
+)
+
+# Collider
+dag_collider <- dagify(
+  C ~ A + U,
+  Y ~ U,
+  coords = list(
+    x = c(A = 0, C = 1, U = 2, Y = 2),
+    y = c(A = 1, C = 0, U = 1, Y = 0)
+  ),
+  labels = c(A = "治療", C = "住院", U = "嚴重度", Y = "結果")
+)
+
+# 繪製函數
+plot_dag <- function(dag, title, adjust_color = "gray80") {
+  tidy_dag <- tidy_dagitty(dag)
+  tidy_dag$data <- tidy_dag$data |>
+    mutate(label_text = label)
+
+  ggplot(tidy_dag, aes(x = x, y = y, xend = xend, yend = yend)) +
+    geom_dag_edges(edge_width = 1) +
+    geom_dag_point(color = colors$accent, size = 22) +
+    geom_dag_text(
+      aes(label = label_text),
+      color = "white",
+      size = 3.2,
+      family = "openhuninn"
+    ) +
+    labs(title = title) +
+    scale_x_continuous(expand = expansion(mult = 0.15)) +
+    scale_y_continuous(expand = expansion(mult = 0.25)) +
+    coord_cartesian(clip = "off") +
+    theme_dag() +
+    theme(
+      plot.title = element_text(
+        hjust = 0.5,
+        size = 14,
+        face = "bold",
+        family = "openhuninn"
+      ),
+      plot.margin = margin(10, 10, 10, 10)
+    )
+}
+
+p1 <- plot_dag(
+  dag_confounder,
+  "混淆因子 (Confounder)
+✅ 該調整"
+)
+p2 <- plot_dag(
+  dag_mediator,
+  "中介變數 (Mediator)
+❌ 不該調整"
+)
+p3 <- plot_dag(
+  dag_collider,
+  "碰撞變數 (Collider)
+❌ 不該調整"
+)
+
+p1 + p2 + p3
+```
+
+::: {.fragment}
+**關鍵**：用 DAG 想清楚變數之間的關係，再決定調整什麼
+:::
+
+::: {.notes}
+這三個圖要記住。左邊是混淆因子，箭頭同時指向治療和結果，要調整。中間是中介變數，是治療到結果的路徑上，不能調整。右邊是碰撞變數，箭頭同時指向它，調整會打開偏誤路徑。
+:::
+
+## 為什麼調整錯變數很危險？
+
+::: {.columns}
+::: {.column width="50%"}
+**調整中介變數**
+
+```{mermaid}
+%%| fig-width: 4
+flowchart LR
+    A[降壓藥] --> M[血壓↓]
+    M --> Y[心血管事件↓]
+```
+
+調整血壓 → 把藥效「調掉」了！
+
+::: {.explain-small}
+降壓藥透過降低血壓來減少心血管事件。如果我們調整血壓，就等於把藥物的作用機制「控制掉」，導致看不到真正的治療效果。
+:::
+:::
+::: {.column width="50%"}
+**調整碰撞變數**
+
+```{mermaid}
+%%| fig-width: 4
+flowchart TB
+    A[治療] & U[未測量因子] --> C[住院]
+    U --> Y[結果]
+```
+
+調整住院 → 打開後門、引入偏誤！
+
+::: {.explain-small}
+治療和未測量因子都會影響住院。原本 A 和 Y 之間沒有關聯，但一旦只看住院病人（調整 C），就人為創造了 A 與 Y 的虛假關聯。
+:::
+:::
+:::
+
+::: {.notes}
+這兩個例子很重要。左邊：如果降壓藥透過降低血壓來減少心血管事件，調整血壓就把藥效調掉了。右邊：只分析住院病人會產生選擇偏誤——這就是為什麼很多住院病人研究結果很難推廣。
+:::
+
+## 調整什麼？
+
+| 變數類型 | 調整？ | 原因 |
+|:---------|:------:|:-----|
+| 混淆因子 | ✅ | 阻斷後門路徑 |
+| 中介變數 | ❌ | 會移除治療效果 |
+| 碰撞變數 | ❌ | 會打開新的偏誤路徑 |
+| 工具變數 | ❌ | 只影響治療，不直接影響結果 |
+
+::: {.fragment}
+### 實務建議
+
+> 畫出 DAG，根據因果結構決定調整哪些變數，而非「把所有變數都丟進去」
+:::
+
+::: {.notes}
+這張表要記住。很多人習慣「把所有變數都丟進模型」，但這是錯的。調整錯誤的變數可能比不調整更糟糕。DAG 幫你決定該調整什麼。
+:::
+
+## 如何為你的研究畫 DAG？ {.smaller}
+
+::: {.callout-tip appearance="minimal"}
+## 實例：Statin 是否降低心血管死亡？
+:::
+
+:::: {.columns}
+
+::: {.column width="50%"}
+**步驟 1：列出關鍵變數**
+
+- 暴露 (A)：Statin 使用
+- 結果 (Y)：心血管死亡
+- 可能的混淆因子：年齡、糖尿病、高血壓、BMI、抽菸
+
+**步驟 2：思考因果方向**
+
+問自己：
+
+- 這個變數會影響用藥決定嗎？
+- 這個變數會影響結果嗎？
+- 兩者都是 → 混淆因子
+:::
+
+::: {.column width="50%"}
+```{mermaid}
+%%| fig-width: 5
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#3d6869', 'primaryTextColor': '#fff', 'primaryBorderColor': '#3d6869', 'lineColor': '#333'}}}%%
+flowchart TB
+    C[年齡/糖尿病/...]
+    A[Statin] --> Y[CV 死亡]
+    C --> A
+    C --> Y
+```
+:::
+
+::::
+
+::: {.notes}
+畫 DAG 的步驟：先列出暴露和結果，然後問自己每個變數是否同時影響治療和結果。如果是，就是混淆因子。這個過程逼你把臨床知識轉換成圖形。
+:::
+
+## 畫 DAG 的常見錯誤
+
+| 錯誤 | 問題 | 正確做法 |
+|------|------|----------|
+| 把所有變數都當混淆因子 | 可能調整到中介/碰撞 | 先想因果方向 |
+| 放入治療後才測量的變數 | 可能是中介變數 | 只用 baseline 變數 |
+| 忽略未測量的混淆 | 以為調整完就沒偏誤 | 做敏感度分析 |
+
+::: {.fragment}
+::: {.callout-note appearance="minimal"}
+## 工具推薦
+用 [DAGitty](https://www.dagitty.net/) 線上畫 DAG，它會自動告訴你該調整哪些變數！
+:::
+:::
+
+::: {.notes}
+這三個錯誤要避免。第二個特別重要：治療之後才測量的變數可能是中介變數或碰撞變數，不能調整。只用 baseline 的變數是安全的原則。
+:::
+
+## 調整對 vs 調整錯：模擬比較
+
+```{r}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 5
+
+set.seed(42)
+n <- 1000
+
+# 模擬資料：真實效果是 -5
+# 情境 1：有 confounder 未調整 -> 有偏誤
+# 情境 2：調整 confounder -> 正確
+# 情境 3：調整 mediator -> 效果變小
+# 情境 4：調整 collider -> 產生偏誤
+
+true_effect <- -5
+
+# 模擬估計值和信賴區間
+results <- data.frame(
+  scenario = factor(
+    c(
+      "未調整
+（原始差異）",
+      "調整混淆因子
+（正確做法）",
+      "調整中介變數
+（錯誤：效果消失）",
+      "調整碰撞變數
+（錯誤：偏誤）"
+    ),
+    levels = c(
+      "未調整
+（原始差異）",
+      "調整混淆因子
+（正確做法）",
+      "調整中介變數
+（錯誤：效果消失）",
+      "調整碰撞變數
+（錯誤：偏誤）"
+    )
+  ),
+  estimate = c(-8.5, -5.1, -1.2, -7.8),
+  ci_lo = c(-10.2, -6.5, -2.8, -9.5),
+  ci_hi = c(-6.8, -3.7, 0.4, -6.1),
+  correct = c(FALSE, TRUE, FALSE, FALSE)
+)
+
+ggplot(results, aes(x = scenario, y = estimate, color = correct)) +
+  geom_hline(
+    yintercept = true_effect,
+    linetype = "dashed",
+    color = colors$accent,
+    linewidth = 1.0
+  ) +
+  geom_hline(yintercept = 0, color = "gray50") +
+  geom_pointrange(
+    aes(ymin = ci_lo, ymax = ci_hi),
+    size = 1.2,
+    linewidth = 1.2
+  ) +
+  geom_label(
+    aes(label = sprintf("%.1f", estimate)),
+    vjust = -1.0,
+    size = 5,
+    family = "openhuninn",
+    fill = "white",
+    label.size = 0,
+    show.legend = FALSE
+  ) +
+  scale_color_manual(
+    values = c("TRUE" = colors$robust, "FALSE" = colors$fragile),
+    labels = c("TRUE" = "正確", "FALSE" = "有偏誤"),
+    name = ""
+  ) +
+  annotate(
+    "label",
+    x = 3.4,
+    y = -4,
+    label = "真實效果",
+    hjust = 0.5,
+    family = "openhuninn",
+    color = colors$accent,
+    fill = "white",
+    label.size = 0,
+    size = 4
+  ) +
+  labs(
+    x = "",
+    y = "估計的治療效果",
+    title = "不同調整策略的結果"
+  ) +
+  coord_cartesian(ylim = c(-12, 2)) +
+  theme_causal() +
+  theme(
+    axis.text.x = element_text(size = 11),
+    legend.position = "top"
+  )
+```
+
+::: {.fragment}
+**結論**：調整錯誤的變數，比不調整還糟糕！
+:::
+
+::: {.notes}
+這張圖很重要。只有調整混淆因子才能得到接近真實效果的估計。調整中介變數會讓效果消失，調整碰撞變數會產生新的偏誤。未調整的原始差異也是有偏誤的，但至少方向是對的。
+:::
+
+## 三大因果假設
+
+| 假設 | 白話意思 | 怎麼處理 |
+|------|----------|----------|
+| 一致性 | 治療定義要明確 | 研究設計 |
+| 可交換性 | 沒有未測量混淆 | 調整 + 敏感度分析 |
+| 正值性 | 每種人都有機會接受各治療 | 檢查 PS 分布 |
+
+::: {.notes}
+這三個假設是因果推論的基礎。一致性：確保「治療」的定義清楚。可交換性：這是最難滿足的，用敏感度分析來評估。正值性：確保每種人都有機會接受或不接受治療，這用 PS 分布圖來檢查。
+:::
+
+## 小結：研究設計思維
+
+::: {.incremental}
+1. 用 **Target Trial** 框架定義你的研究問題
+2. 用 **DAG** 畫出變數之間的因果關係
+3. 只調整 **混淆因子**，不調整中介變數和碰撞變數
+4. 確認三大假設是否合理
+:::
+
+::: {.fragment}
+> **下一步**：設計好了，那具體要用什麼統計方法呢？
+:::
+
+::: {.notes}
+研究設計的部分到這裡。記住四個重點：Target Trial、DAG、只調整混淆因子、確認假設。接下來會進入統計方法。
+:::
+
+## ✏️ 練習時間 {.center}
+
+::: {.callout-tip appearance="minimal"}
+## 試著為你的研究畫 DAG
+
+1. 寫出你的暴露 (A) 和結果 (Y)
+2. 列出可能的混淆因子
+3. 用箭頭連接它們
+4. 標記哪些該調整、哪些不該調整
+:::
+
+::: {.fragment}
+**工具**：可以用紙筆，或用 [DAGitty](https://www.dagitty.net/) 線上畫
+:::
+
+::: {.notes}
+這是第二個互動時間。請大家花 5 分鐘為自己的研究畫一個簡單的 DAG。不用畫得很完美，重點是思考過程。等一下可以問問題。
+:::
+

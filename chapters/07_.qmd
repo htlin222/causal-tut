@@ -1,0 +1,306 @@
+# 第六部分：資料準備 {data-stack-name="資料準備"}
+
+## 本節重點
+
+在跑分析之前，資料要先整理好：
+
+::: {.incremental}
+- 資料格式長什麼樣？
+- 哪些變數要放進去？
+- 有哪些常見的陷阱？
+:::
+
+::: {.notes}
+資料準備往往比分析本身更花時間。這一節會講常見的資料問題和處理方法。很多研究失敗不是方法不對，而是資料品質有問題。
+:::
+
+## 原始資料
+
+你的 Excel 可能長這樣：
+
+::: {style="font-size: 0.55em;"}
+| id | 治療 | 年齡 | 性別 | ECOG | 共病數 | 追蹤時間 | 事件 | 備註 |
+|----|------|------|------|------|--------|----------|------|------|
+| 001 | 新藥 | 58 | 男 | 1 | 2 | 365 | 1 | |
+| 002 | 標準 | 62 | 女 | 0 | 1 | 420 | 0 | 轉院 |
+| 003 | 新藥 | 71 | 男 | 2 | 3 | 180 | 1 | |
+| 004 | 標準 | 55 | 女 | 1 | | 730 | 0 | 共病數遺漏 |
+| 005 | 新藥 | 67 | 男 | 1 | 2 | 90 | 1 | 提早退出 |
+| ... | ... | ... | ... | ... | ... | ... | ... | ... |
+:::
+
+::: {.fragment}
+**要注意**：每一列是一個病人、每一欄是一個變數、遺漏值要標示清楚
+:::
+
+::: {.notes}
+這是典型的臨床資料表格。注意第 4 筆有遺漏值、第 5 筆有提早退出。這些都是真實資料會遇到的問題，等一下會講怎麼處理。
+:::
+
+## 資料格式要求
+
+::: {.columns}
+::: {.column width="50%"}
+```{r}
+#| echo: false
+#| message: false
+library(gtsummary)
+library(dplyr)
+
+set.seed(2024)
+n <- 200
+
+age <- round(rnorm(n, 60, 12))
+sex <- sample(c("男", "女"), n, replace = TRUE)
+ecog <- sample(0:2, n, replace = TRUE, prob = c(0.3, 0.5, 0.2))
+comorbidity <- sample(0:2, n, replace = TRUE)
+ps <- plogis(
+  -1 + 0.03 * age - 0.5 * (sex == "女") - 0.3 * ecog + 0.2 * comorbidity
+)
+treatment <- rbinom(n, 1, ps)
+outcome <- rbinom(n, 1, plogis(-2 + 0.02 * age - 0.8 * treatment + 0.3 * ecog))
+
+data.frame(
+  treatment = factor(treatment, labels = c("對照組", "治療組")),
+  age = age,
+  sex = sex,
+  ecog = factor(ecog),
+  comorbidity = comorbidity,
+  outcome = factor(outcome, labels = c("存活", "死亡"))
+) |>
+  tbl_summary(
+    by = treatment,
+    label = list(
+      age ~ "年齡",
+      sex ~ "性別",
+      ecog ~ "ECOG",
+      comorbidity ~ "共病數",
+      outcome ~ "結果"
+    )
+  ) |>
+  add_p() |>
+  as_gt() |>
+  gt::tab_options(
+    table.font.size = gt::px(14),
+    data_row.padding = gt::px(2),
+    row_group.padding = gt::px(2)
+  )
+```
+:::
+::: {.column width="50%"}
+**觀察到什麼？**
+
+- 治療組年齡較高、男性較多
+- 兩組 baseline 特徵不平衡
+
+**陷阱**
+
+- 直接比較結果會有偏誤
+- 需要調整混淆因子
+- 這就是為什麼需要因果推論方法！
+:::
+:::
+
+::: {.notes}
+這張表格顯示典型的 baseline 不平衡。治療組年齡較高、男性較多。直接比較結果會有偏誤——這就是為什麼我們需要前面學的方法。
+:::
+
+## 資料品質檢查（比模型更重要！）
+
+在跑任何分析之前，**先做這三件事**：
+
+::: {.incremental}
+1. **缺失值處理**：不要默默刪除！
+2. **重疊檢查**：兩組是否可比？
+3. **事件數評估**：樣本夠不夠穩定？
+:::
+
+::: {.notes}
+這三項檢查比選什麼模型更重要。缺失值處理不當會造成偏誤，重疊不好會讓估計不穩定，事件數太少會讓模型過擬合。花時間在這三項上，比花時間調模型參數更有價值。
+:::
+
+## 缺失值處理
+
+::: {.callout-warning appearance="minimal"}
+## 常見錯誤
+直接刪除有缺失的個案（listwise deletion），假裝沒事
+:::
+
+| 缺失機制 | 意思 | 處理方式 |
+|----------|------|----------|
+| MCAR | 完全隨機缺失 | 刪除還可以（但浪費資料）|
+| MAR | 可觀察變數可解釋 | **多重插補** (Multiple Imputation) |
+| MNAR | 缺失本身有意義 | 敏感度分析 |
+
+::: {.fragment}
+**建議**：用 `mice` 套件做多重插補，在每套插補資料內分析再合併
+:::
+
+::: {.notes}
+缺失值不要直接刪除！這是最常見的錯誤。多重插補是目前推薦的做法——用 mice 套件可以很容易做到。基本概念是：用其他變數預測缺失值，產生多套完整資料，分別分析後合併結果。
+:::
+
+## 重疊檢查（Overlap / Positivity）
+
+:::: {.columns}
+
+::: {.column width="50%"}
+```{r}
+#| echo: false
+#| fig-width: 6
+#| fig-height: 5
+
+set.seed(789)
+n <- 400
+
+# 好的重疊：兩組 PS 大量重疊
+ps_good_treated <- rbeta(n / 2, 3, 3) * 0.6 + 0.2
+ps_good_control <- rbeta(n / 2, 3, 3) * 0.6 + 0.2
+
+df_good <- data.frame(
+  ps = c(ps_good_treated, ps_good_control),
+  group = factor(rep(c("治療組", "對照組"), each = n / 2))
+)
+
+ggplot(df_good, aes(x = ps, fill = group)) +
+  geom_density(alpha = 0.6, color = "white") +
+  scale_fill_manual(
+    values = c("治療組" = colors$treatment, "對照組" = colors$control)
+  ) +
+  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+  labs(
+    title = "✅ 好的重疊",
+    x = "Propensity Score",
+    y = "Density",
+    fill = ""
+  ) +
+  theme_causal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    legend.position = "top"
+  )
+```
+
+- 兩組 PS 分布大量重疊
+- 可以估計 ATE
+:::
+
+::: {.column width="50%"}
+```{r}
+#| echo: false
+#| fig-width: 6
+#| fig-height: 5
+
+# 差的重疊：兩組 PS 幾乎不重疊
+ps_bad_treated <- rbeta(n / 2, 5, 2) * 0.4 + 0.55
+ps_bad_control <- rbeta(n / 2, 2, 5) * 0.4 + 0.05
+
+df_bad <- data.frame(
+  ps = c(ps_bad_treated, ps_bad_control),
+  group = factor(rep(c("治療組", "對照組"), each = n / 2))
+)
+
+ggplot(df_bad, aes(x = ps, fill = group)) +
+  geom_density(alpha = 0.6, color = "white") +
+  scale_fill_manual(
+    values = c("治療組" = colors$treatment, "對照組" = colors$control)
+  ) +
+  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+  labs(
+    title = "❌ 差的重疊",
+    x = "Propensity Score",
+    y = "Density",
+    fill = ""
+  ) +
+  theme_causal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    legend.position = "top"
+  )
+```
+
+- 兩組 PS 幾乎不重疊
+- 應改估 ATT 或限制分析範圍
+:::
+
+::::
+
+::: {.notes}
+這兩張圖要會看。左邊是好的重疊——兩組 PS 分布大量重疊，可以估 ATE。右邊是差的重疊——兩組幾乎不重疊，這時候估 ATE 會很不穩定，應該改估 ATT。
+:::
+
+## 重疊不好怎麼辦？
+
+::: {style="font-size: 0.8em;"}
+| 方法 | 說明 | 適用情境 |
+|------|------|----------|
+| **改估 ATT** | 只估計「治療組」的平均效果 | 對照組有很多極端 PS |
+| **Trimming** | 排除 PS < 0.1 或 > 0.9 的個案 | 兩端都有極端值 |
+| **Overlap weights** | 給重疊區域較高權重 | 想保留所有樣本 |
+:::
+
+::: {.callout-tip appearance="minimal"}
+## 實務建議
+- 先畫 PS 分布圖，判斷重疊程度
+- 如果對照組 PS 普遍很低 → 改估 ATT
+- 如果兩端都有極端值 → Trimming 或 Overlap weights
+- **報告時說明**你選擇的理由！
+:::
+
+::: {.notes}
+重疊不好的三個解法：改估 ATT、Trimming（排除極端值）、Overlap weights（給重疊區域較高權重）。選擇哪個要根據你的研究問題和資料情況。記得在論文裡說明你的選擇理由。
+:::
+
+## 事件數評估
+
+::: {.callout-note appearance="minimal"}
+## 經驗法則
+二元結局時，事件數 < 50 會讓任何高自由度模型都很不穩定
+:::
+
+| 事件數 | 建議 |
+|--------|------|
+| < 30 | 極度保守：只調整 2-3 個最重要混淆因子 |
+| 30-50 | 保守：用正則化模型、減少變數 |
+| 50-100 | 標準分析可行，但 Super Learner 庫要小 |
+| > 100 | 可以用較彈性的模型 |
+
+::: {.notes}
+事件數是決定模型複雜度的關鍵。事件數 30 例以下要極度保守，只調整 2-3 個最重要的混淆因子。事件數 100 以上才能用較彈性的模型。這個表格要記住。
+:::
+
+## 常見資料問題總表
+
+| 問題 | 解法 |
+|------|------|
+| 遺漏值 | Multiple imputation（先處理）|
+| 混淆因子放錯時間點 | 只能用 baseline 的 |
+| Time zero 不明確 | 仔細定義追蹤起點 |
+| 治療定義模糊 | 明確定義什麼算「接受治療」|
+| 重疊不佳 | 改 ATT、trimming、或限制分析範圍 |
+| 事件數太少 | 減少調整變數、用正則化 |
+
+::: {.notes}
+這張總表是常見問題的速查表。遇到問題時可以查這張表找解法。注意前兩項最重要：缺失值和混淆因子時間點的問題，是最常見的錯誤來源。
+:::
+
+## 存活資料格式
+
+```{.r code-line-numbers="1-5|6"}
+df_surv <- data.frame(
+  id = ...,
+  treatment = ...,
+  time = ..., # 追蹤時間
+  event = ..., # 1=事件，0=設限
+  # 混淆因子...
+)
+```
+
+::: {.fragment}
+> **下一步**：資料準備好了，來看實際的 R 程式碼！
+:::
+
+::: {.notes}
+存活資料的格式比較特別，需要追蹤時間和事件指標兩個變數。event = 1 表示發生事件（如死亡），0 表示設限（如追蹤結束還活著或失聯）。接下來進入 R 實作環節。
+:::
+

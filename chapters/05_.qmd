@@ -1,0 +1,339 @@
+# 第四部分：方法概念（下）進階篇 {data-stack-name="方法進階"}
+
+## 本節重點
+
+基礎方法（PS、IPW）有其限制，現在來學更穩健的方法：
+
+::: {.incremental}
+- **雙重穩健估計**：兩個模型，錯一個也沒關係
+- **TMLE**：最推薦的雙重穩健方法
+- **Super Learner**：自動選最佳模型組合
+:::
+
+::: {.notes}
+這一節是方法的核心。我們要學三個重要概念：雙重穩健、TMLE、Super Learner。這些名詞聽起來很嚇人，但概念其實很直觀。
+:::
+
+## 雙重穩健估計（核心概念）
+
+::: {.callout-tip appearance="minimal"}
+## 什麼是「雙重穩健」(Doubly Robust)？
+同時用兩個模型來估計因果效應，只要其中一個模型正確，結果就不會有偏誤。就像買兩份保險！
+:::
+
+::: {.incremental}
+- 同時建兩個模型：PS 模型 + 結果模型
+- 好處：只要其中一個對，結果就對
+- 「買保險」的概念
+:::
+
+::: {.notes}
+雙重穩健的概念很簡單：同時用兩個模型，一個預測治療（PS 模型），一個預測結果（outcome 模型）。只要其中一個模型正確，結果就不會有偏誤。這就像買兩份保險——降低風險。
+:::
+
+## TMLE vs AIPW
+
+::: {.callout-note appearance="minimal"}
+## 名詞解釋
+- **TMLE** (Targeted Maximum Likelihood Estimation)：針對「你想估計的東西」做最佳化的雙重穩健方法
+- **AIPW** (Augmented IPW)：在 IPW 基礎上加入結果模型修正的雙重穩健方法
+:::
+
+::: {.columns}
+::: {.column width="50%"}
+**共同點**
+
+- 都是雙重穩健
+:::
+::: {.column width="50%"}
+**TMLE 優勢**
+
+- 多一個 targeting 步驟
+- 更穩定
+:::
+:::
+
+::: {.fragment}
+**實務上：選 TMLE 就對了**
+:::
+
+::: {.notes}
+TMLE 和 AIPW 都是雙重穩健方法。TMLE 多一個 targeting 步驟，讓估計更穩定。實務上不用糾結選哪個——選 TMLE 就對了，R 套件也很成熟。
+:::
+
+## 雙重穩健：「錯一個也沒關係」
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 5
+
+# 建立 2x2 情境表
+dr_scenarios <- data.frame(
+  ps_model = rep(c("PS 模型
+正確", "PS 模型
+錯誤"), each = 2),
+  outcome_model = rep(c("Outcome 模型正確", "Outcome 模型錯誤"), 2),
+  result = c("無偏誤", "無偏誤", "無偏誤", "有偏誤"),
+  color = c("robust", "robust", "robust", "fragile")
+)
+
+dr_scenarios$ps_model <- factor(
+  dr_scenarios$ps_model,
+  levels = c("PS 模型
+正確", "PS 模型
+錯誤")
+)
+dr_scenarios$outcome_model <- factor(
+  dr_scenarios$outcome_model,
+  levels = c("Outcome 模型正確", "Outcome 模型錯誤")
+)
+
+ggplot(dr_scenarios, aes(x = outcome_model, y = ps_model, fill = color)) +
+  geom_tile(color = "white", linewidth = 3) +
+  geom_text(
+    aes(label = result),
+    size = 8,
+    family = "openhuninn",
+    fontface = "bold"
+  ) +
+  scale_fill_manual(
+    values = c("robust" = colors$robust, "fragile" = colors$fragile),
+    guide = "none"
+  ) +
+  labs(
+    x = "",
+    y = "",
+    title = "雙重穩健：4 種情境中 3 種都 OK"
+  ) +
+  theme_causal() +
+  theme(
+    axis.text = element_text(size = 14, face = "bold"),
+    plot.title = element_text(hjust = 0.5, size = 18),
+    panel.grid = element_blank()
+  )
+```
+
+::: {.fragment}
+**關鍵優勢**：只有當「兩個模型都錯」時才會有偏誤 → 大大降低風險
+:::
+
+::: {.notes}
+這張 2x2 表格是雙重穩健的精髓。四種情境中，只有右下角——兩個模型都錯——才會有偏誤。其他三種情況都 OK。這大大降低了風險。
+:::
+
+## 但問題來了...
+
+::: {.callout-warning appearance="minimal"}
+## 雙重穩健的前提
+「至少一個模型要對」— 但我們怎麼確保？
+:::
+
+:::: {.columns}
+
+::: {.column width="50%"}
+**傳統做法**
+
+1. 手動選一個模型（如 logistic）
+2. 假設函數形式正確
+3. 祈禱沒選錯
+:::
+
+::: {.column width="50%"}
+**問題**
+
+- 真實關係可能是非線性的
+- 可能有交互作用
+- 選錯了 → 兩個模型都錯 → 偏誤！
+:::
+
+::::
+
+::: {.fragment}
+> **解法**：讓資料自己決定用哪個模型 → **Super Learner**
+:::
+
+::: {.notes}
+但問題是：我們怎麼知道模型對不對？傳統做法是手動選一個模型，比如 logistic regression，然後假設它是對的。但真實世界的關係可能是非線性的、有交互作用的。解法是讓資料自己選——這就是 Super Learner。
+:::
+
+## Super Learner（一句話解釋）
+
+::: {.callout-note appearance="minimal"}
+## 什麼是 Super Learner？
+一種「模型組合」技術：同時跑多個機器學習模型，用交叉驗證找出最佳加權組合。
+:::
+
+- 不用手動選模型，讓演算法自動找最佳組合
+- 大幅降低「兩個模型都錯」的機率
+- 這就是為什麼現代因果推論都用 TMLE + Super Learner
+
+::: {.fragment}
+::: {.callout-tip appearance="minimal"}
+## 白話總結
+Super Learner 就像「模型評審團」：讓多個模型各自預測，然後根據表現分配權重。你不用煩惱該選哪個模型，讓資料說話！
+:::
+:::
+
+::: {.notes}
+Super Learner 的概念很簡單：同時跑多個模型——logistic、random forest、boosting 等——然後用交叉驗證看哪個表現好，給它更高的權重。最後的預測是這些模型的加權組合。你不用猜哪個模型好，讓資料告訴你。
+:::
+
+## Super Learner 庫的選擇
+
+::: {.callout-warning appearance="minimal"}
+## 小樣本原則
+庫要**小且保守**，不要追求複雜！
+:::
+
+:::: {.columns}
+
+::: {.column width="50%"}
+**推薦的候選模型**
+
+- `SL.glm`：標準 logistic/線性
+- `SL.glmnet`：正則化（ridge/lasso）
+- `SL.gam`：平滑非線性
+- `SL.ranger`：（事件數夠才加）
+:::
+
+::: {.column width="50%"}
+**小樣本要避免**
+
+- 深樹 random forest
+- 大規模 boosting
+- 複雜超參數搜尋
+- 太多候選模型
+:::
+
+::::
+
+::: {.notes}
+重要提醒：小樣本時，Super Learner 的候選模型要保守。不是越複雜越好——複雜模型在小樣本容易過擬合。幾百例的臨床資料，用 GLM + GLMNet + GAM 就夠了。
+:::
+
+## Super Learner 庫：實例選擇
+
+| 情境 | 事件數 | 推薦的庫 |
+|------|--------|----------|
+| 罕見疾病 RCT | 30-50 | `SL.glm`, `SL.glmnet` |
+| 一般臨床研究 | 50-200 | `SL.glm`, `SL.glmnet`, `SL.gam` |
+| 大型健保資料庫 | 500+ | 上述 + `SL.ranger`, `SL.xgboost` |
+| 超大資料 | 5000+ | 可加更多彈性模型 |
+
+::: {.fragment}
+::: {.callout-tip appearance="minimal"}
+## 經驗法則
+事件數 ÷ 10 ≈ 可用的候選模型數上限
+:::
+:::
+
+::: {.notes}
+這張表是實用的參考。事件數 30 例的小樣本，只用最簡單的兩個模型。事件數 500 以上才能用複雜的 random forest 和 xgboost。經驗法則：事件數除以 10 就是候選模型數的上限。
+:::
+
+## 使用 ML 模型的隱憂
+
+::: {.callout-warning appearance="minimal"}
+## 問題
+Super Learner 用了彈性的機器學習模型，但這會帶來一個統計問題...
+:::
+
+:::: {.columns}
+
+::: {.column width="50%"}
+**傳統迴歸**
+
+- 模型簡單、參數少
+- 用同一筆資料擬合 + 推論 → OK
+:::
+
+::: {.column width="50%"}
+**機器學習模型**
+
+- 模型複雜、容易過擬合
+- 用同一筆資料擬合 + 推論 → 標準誤會偏小、信賴區間不可靠
+:::
+
+::::
+
+::: {.fragment}
+> **白話說**：模型「記住」了資料的噪音，導致我們對效果估計過度自信
+:::
+
+::: {.notes}
+用機器學習模型有一個隱憂：過擬合會讓標準誤偏小。傳統迴歸用同一筆資料擬合和推論沒問題，但複雜的 ML 模型會「記住」資料的噪音。解決方法是 cross-fitting。
+:::
+
+## Cross-Fitting（交叉擬合）
+
+::: {.callout-tip appearance="minimal"}
+## 解法
+用**不同的資料**來擬合模型和估計效應 → 避免過擬合影響推論
+:::
+
+**做法**：
+
+::: {.incremental .smaller}
+1. 把資料分成 K 折（幾百例建議 **2-fold**）
+2. 用 K-1 折擬合模型
+3. 用剩下 1 折預測
+4. 輪流做，最後合併
+:::
+
+::: {.fragment}
+`tmle3` 和 `ltmle` 套件會自動幫你做！
+:::
+
+::: {.callout-tip appearance="minimal"}
+## 白話總結
+Cross-fitting 就像「考試防作弊」：用一半資料訓練模型，用另一半驗證。這樣模型不會「背答案」，推論才可靠。
+:::
+
+::: {.notes}
+Cross-fitting 的概念是：用不同的資料來擬合模型和估計效應。把資料分成 K 折，用 K-1 折訓練，用剩下 1 折預測。好消息是 tmle 套件會自動幫你做，不用手動寫。
+:::
+
+## PS 截斷（Truncation）
+
+::: {.callout-warning appearance="minimal"}
+## 問題
+PS 太接近 0 或 1 時，權重會爆炸
+:::
+
+**解法**：把 PS 限制在合理範圍
+
+```r
+# 常見截斷範圍
+ps_truncated <- pmax(0.01, pmin(0.99, ps)) # 寬鬆
+ps_truncated <- pmax(0.05, pmin(0.95, ps)) # 保守
+```
+
+::: {.callout-important appearance="minimal"}
+## 重要提醒
+截斷範圍要**預先宣告**，不要事後調參（避免 p-hacking 嫌疑）
+:::
+
+::: {.notes}
+PS 截斷是處理極端值的簡單方法。把 PS 限制在 0.01 到 0.99 之間，權重就不會爆炸。重要：截斷範圍要在分析前宣告，不能事後調。這是避免 p-hacking 的原則。
+:::
+
+## 小結：方法概念
+
+到目前為止，我們學了：
+
+| 概念 | 重點 |
+|------|------|
+| 傾向分數 (PS) | 預測接受治療的機率，讓兩組可比 |
+| 雙重穩健 | 兩個模型，錯一個也沒關係 |
+| TMLE | 最推薦的雙重穩健方法 |
+| Super Learner | 自動選最佳模型組合 |
+
+::: {.fragment}
+> **下一步**：不同類型的結果變數，要用什麼方法？
+:::
+
+::: {.notes}
+到這裡我們學完了核心方法。記住這個組合：TMLE + Super Learner + Cross-fitting + PS 截斷。這是目前最推薦的因果推論方法。接下來會講不同類型結果要用什麼 R 套件。
+:::
+
