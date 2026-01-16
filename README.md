@@ -1,8 +1,18 @@
-# Quarto Revealjs Presentation Template
+# 觀察性研究的因果推論：給臨床醫師的實戰指南
 
-A Quarto presentation template with reveal.js plugins. Outputs both slides and HTML page with TOC.
+Causal Inference from Observational Studies: A Practical Guide for Clinicians
 
-**Live Demo:** [htlin.github.io/quarto-presentation](https://htlin.github.io/quarto-presentation/)
+**Live Demo:** [htlin222.github.io/causal-tut](https://htlin222.github.io/causal-tut/)
+
+## 課程內容
+
+| 章節 | 主題       | 重點                                  |
+| ---- | ---------- | ------------------------------------- |
+| 1-2  | 問題與設計 | 為什麼需要因果推論？Target Trial 設計 |
+| 3-4  | 方法概念   | PS → IPW → 雙重穩健 → TMLE            |
+| 5-6  | 準備工作   | 選方法、備資料                        |
+| 7    | R 實作     | 程式碼示範                            |
+| 8-9  | 驗證報告   | E-value、論文寫作                     |
 
 ## Features
 
@@ -10,17 +20,6 @@ A Quarto presentation template with reveal.js plugins. Outputs both slides and H
 - **code-fullscreen** - Fullscreen button for code blocks
 - **codeFocus** - Progressive code line highlighting with explanations
 - **simplemenu** - Navigation menu bar for sections
-
-## Project Structure
-
-```
-.
-├── index.qmd            # Main content
-├── _quarto.yml          # Configuration (title, author, formats)
-├── custom.scss          # Custom theme styles
-├── makefile             # Build automation
-└── .github/workflows/   # GitHub Actions (auto-deploy)
-```
 
 ## Quick Start
 
@@ -31,81 +30,21 @@ make
 # Live preview with auto-reload
 make preview
 
-# Build for deployment
-make deploy
-
 # Clean output files
 make clean
 ```
 
 ## Output
 
-| File          | Description           | URL                                   |
-| ------------- | --------------------- | ------------------------------------- |
-| `index.html`  | HTML page with TOC    | `username.github.io/repo/`            |
-| `slides.html` | Revealjs presentation | `username.github.io/repo/slides.html` |
-
-## Customization
-
-### Change title or author
-
-Edit `_quarto.yml`:
-
-```yaml
-title: "Your Presentation Title"
-subtitle: "Your Subtitle"
-author: "Your Name"
-```
-
-### Section format
-
-Each section should start with a level-1 heading with `data-stack-name` for simplemenu:
-
-```markdown
-# Section Title {data-stack-name="MenuName"}
-
-## Slide title
-
-Content here...
-```
-
-### CodeFocus usage
-
-````markdown
-## Slide with CodeFocus
-
-```python
-import requests
-response = requests.get(url)
-data = response.json()
-```
-
-::: {.fragment .current-only data-code-focus="1"}
-Import the requests library.
-:::
-
-::: {.fragment .current-only data-code-focus="2-3"}
-Make request and parse JSON.
-:::
-````
-
-## Deploy
-
-Automated via GitHub Actions. On push to `main`:
-
-1. Builds both formats
-2. Copies to `_site/`
-3. Deploys to GitHub Pages
-
-### Setup GitHub Pages
-
-1. Go to repo **Settings** → **Pages**
-2. Set Source to **GitHub Actions**
-3. Push to `main` branch
+| File          | Description           | URL                                         |
+| ------------- | --------------------- | ------------------------------------------- |
+| `index.html`  | HTML page with TOC    | `htlin222.github.io/causal-tut/`            |
+| `slides.html` | Revealjs presentation | `htlin222.github.io/causal-tut/slides.html` |
 
 ## Requirements
 
 - [Quarto](https://quarto.org/) ≥ 1.3
+- R packages: `ggplot2`, `showtext`, `cobalt`, `MatchIt`, etc.
 
 ## License
 
