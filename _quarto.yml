@@ -1,0 +1,37 @@
+project:
+  type: default
+  render:
+    - index.qmd
+
+title: "觀察性研究的因果推論"
+subtitle: "給臨床醫師的實戰指南"
+author: "Causal Inference from Observational Studies"
+
+format:
+  revealjs:
+    output-file: slides.html
+    theme: [default, custom.scss]
+    slide-number: true
+    code-line-numbers: true
+    simplemenu:
+      barhtml:
+        header: "<div class='menubar'><ul class='menu'></ul></div>"
+      flat: false
+      scale: 0.67
+    filters:
+      - reveal-auto-agenda
+      - code-fullscreen
+    revealjs-plugins:
+      - simplemenu
+      - codefocus
+    auto-agenda:
+      bullets: numbered
+      heading: Agenda
+    code-fullscreen: true
+  html:
+    output-file: index.html
+    toc: true
+    toc-depth: 2
+    theme: cosmo
+    code-fold: true
+    code-tools: true

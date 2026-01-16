@@ -1,0 +1,2511 @@
+# 引言 {data-stack-name="引言"}
+
+## 演講主題
+
+**觀察性研究的因果推論：給臨床醫師的實戰指南**
+
+*Causal Inference from Observational Studies: A Practical Guide for Clinicians*
+
+## 今天你會學到什麼？
+
+::: {.incremental}
+1. **為什麼**：觀察性研究為何不能直接下因果結論？
+2. **怎麼想**：如何設計研究問題？（Target Trial）
+3. **怎麼做**：用什麼方法分析？（TMLE + Super Learner）
+4. **怎麼驗證**：如何確認結果可信？（敏感度分析）
+:::
+
+## 課程地圖
+
+```{mermaid}
+%%| fig-width: 10
+flowchart LR
+    A[問題：為什麼需要？] --> B[設計：Target Trial]
+    B --> C[方法：PS + TMLE]
+    C --> D[實作：R code]
+    D --> E[驗證：E-value]
+```
+
+::: {.fragment}
+每個階段都會有**實例**和**程式碼**
+:::
+
+```{r}
+#| label: setup-theme
+#| include: false
+
+# 統一的 R 設定
+library(ggplot2)
+library(showtext)
+
+# 載入中文字體
+font_add("openhuninn", "jf-openhuninn-2.1.ttf")
+showtext_auto()
+
+# 一致的色盤
+colors <- list(
+  treatment = "#E69F00",
+  control = "#56B4E9",
+  robust = "#2E86AB",
+  fragile = "#E94F37",
+  accent = "#3d6869"
+)
+
+# 統一主題
+theme_causal <- function(base_size = 16) {
+  theme_minimal(base_size = base_size, base_family = "openhuninn") +
+    theme(
+      legend.position = "top",
+      plot.title = element_text(face = "bold"),
+      panel.grid.minor = element_blank()
+    )
+}
+```
+
+# 第一部分：為什麼需要因果推論？ {data-stack-name="為什麼"}
+
+## 開場情境：一個「成功」的研究
+
+::: {.callout-note appearance="minimal"}
+## 某醫學中心回顧性研究報告
+「新藥 DrugX 顯著提升晚期癌症病人存活率」
+:::
+
+## 研究結果看起來很棒！
+
+| 組別 | 人數 | 一年存活率 | p-value |
+|:----:|:----:|:----------:|:-------:|
+| 新藥組 | 500 | **70%** | |
+| 傳統治療 | 500 | 50% | **< 0.001** |
+
+::: {.fragment}
+統計顯著、效果量大、樣本數夠...
+
+**可以發 paper 了嗎？**
+:::
+
+## 等等，讓我們看看病人特徵...
+
+::: {.columns}
+::: {.column width="50%"}
+**新藥組**
+
+- 平均年齡：55 歲
+- ECOG 0-1：85%
+- 共病指數：1.2
+:::
+::: {.column width="50%"}
+**傳統治療組**
+
+- 平均年齡：68 歲
+- ECOG 0-1：45%
+- 共病指數：3.8
+:::
+:::
+
+::: {.fragment .fade-up}
+😱 **兩組根本不一樣！**
+:::
+
+## 混淆效應視覺化：Simpson's Paradox
+
+```{r}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 5
+
+# Simpson's Paradox 風格的混淆效應展示
+set.seed(2024)
+
+# 模擬資料：輕症和重症病人的治療效果
+n_per_group <- 100
+
+# 輕症病人
+light_treated <- data.frame(
+  severity = "輕症",
+  treatment = "新藥",
+  survival = rbinom(n_per_group, 1, 0.85)
+)
+light_control <- data.frame(
+  severity = "輕症",
+  treatment = "傳統治療",
+  survival = rbinom(n_per_group * 0.3, 1, 0.80)
+)
+
+# 重症病人
+severe_treated <- data.frame(
+  severity = "重症",
+  treatment = "新藥",
+  survival = rbinom(n_per_group * 0.3, 1, 0.45)
+)
+severe_control <- data.frame(
+  severity = "重症",
+  treatment = "傳統治療",
+  survival = rbinom(n_per_group, 1, 0.40)
+)
+
+df_simpson <- rbind(
+  light_treated,
+  light_control,
+  severe_treated,
+  severe_control
+)
+
+# 計算分層存活率
+summary_by_severity <- aggregate(
+  survival ~ severity + treatment,
+  df_simpson,
+  mean
+)
+summary_overall <- aggregate(survival ~ treatment, df_simpson, mean)
+summary_overall$severity <- "整體（未分層）"
+
+combined <- rbind(summary_by_severity, summary_overall)
+combined$severity <- factor(
+  combined$severity,
+  levels = c("整體（未分層）", "輕症", "重症")
+)
+
+ggplot(combined, aes(x = treatment, y = survival * 100, fill = treatment)) +
+  geom_col(position = "dodge", width = 0.7) +
+  geom_text(
+    aes(label = sprintf("%.0f%%", survival * 100)),
+    vjust = -0.5,
+    size = 5,
+    family = "openhuninn"
+  ) +
+  facet_wrap(~severity, ncol = 3) +
+  scale_fill_manual(
+    values = c("新藥" = colors$treatment, "傳統治療" = colors$control)
+  ) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 25)) +
+  labs(
+    x = "",
+    y = "存活率 (%)",
+    fill = ""
+  ) +
+  theme_causal() +
+  theme(
+    strip.text = element_text(size = 14, face = "bold"),
+    legend.position = "none"
+  )
+```
+
+::: {.fragment}
+**觀察**：整體看起來新藥好很多，但分層後差異變小！
+:::
+
+::: {.notes}
+這就是 Simpson's Paradox - 整體的關聯方向可能跟分層後不同。醫師傾向開新藥給輕症病人，所以新藥組有更多輕症、存活率本來就高。
+:::
+
+## 真相大白
+
+::: {.incremental}
+- 醫師傾向開新藥給「狀況較好」的病人
+- 新藥組本來就會活比較久
+- 70% vs 50% 的差異，有多少是藥效？有多少是選擇偏誤？
+:::
+
+::: {.fragment}
+### 核心問題
+
+> **觀察到的差異 ≠ 因果效應**
+:::
+
+## 關聯 vs 因果
+
+::: {.incremental}
+- **描述性問題**：「用新藥的人和沒用的人，結果有沒有不同？」
+- **因果性問題**：「如果讓同一群人用新藥 vs 不用，結果會不會不同？」
+- **核心困難**：反事實 (counterfactual) 永遠觀察不到
+:::
+
+## 反事實：我們永遠只看到一半
+
+```{r}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 5
+
+library(ggplot2)
+
+# 建立反事實概念的資料
+patient_data <- data.frame(
+  patient = rep(c("病人 A", "病人 B", "病人 C"), each = 2),
+  scenario = rep(c("實際觀察", "反事實"), 3),
+  treatment = c(
+    "用新藥",
+    "不用新藥", # A
+    "不用新藥",
+    "用新藥", # B
+    "用新藥",
+    "不用新藥"
+  ), # C
+  outcome = c(
+    1,
+    NA, # A: 用新藥，存活；如果不用呢？未知
+    0,
+    NA, # B: 不用新藥，死亡；如果用呢？未知
+    1,
+    NA
+  ), # C: 用新藥，存活；如果不用呢？未知
+  observed = c(TRUE, FALSE, TRUE, FALSE, TRUE, FALSE)
+)
+
+patient_data$outcome_label <- ifelse(
+  is.na(patient_data$outcome),
+  "?",
+  ifelse(patient_data$outcome == 1, "存活", "死亡")
+)
+patient_data$treatment <- factor(
+  patient_data$treatment,
+  levels = c("用新藥", "不用新藥")
+)
+patient_data$scenario <- factor(
+  patient_data$scenario,
+  levels = c("實際觀察", "反事實")
+)
+
+ggplot(patient_data, aes(x = scenario, y = patient)) +
+  geom_tile(
+    aes(fill = observed),
+    color = "white",
+    linewidth = 2,
+    width = 0.9,
+    height = 0.8
+  ) +
+  geom_text(
+    aes(label = paste0(treatment, "\n", outcome_label)),
+    size = 5,
+    family = "openhuninn",
+    color = ifelse(patient_data$observed, "white", "gray40")
+  ) +
+  scale_fill_manual(
+    values = c("TRUE" = colors$accent, "FALSE" = "gray90"),
+    guide = "none"
+  ) +
+  labs(x = "", y = "") +
+  theme_causal() +
+  theme(
+    axis.text = element_text(size = 14),
+    panel.grid = element_blank()
+  )
+```
+
+::: {.fragment}
+**因果推論的核心問題**：我們想知道「?」是什麼，但永遠無法直接觀察
+:::
+
+## 經典謬誤案例
+
+| 觀察到的關聯 | 真正的原因 |
+|:------------|:----------|
+| 🍦 冰淇淋銷量 ↑ → 溺水死亡 ↑ | 夏天（天氣熱）|
+| 🏥 住院病人死亡率 > 在家 | 病重才住院 |
+| 👟 鞋子尺寸大 → 閱讀能力強 | 年齡（小孩長大）|
+| 🌡️ 黃色手指 → 肺癌風險 ↑ | 抽菸 |
+
+::: {.fragment}
+**這些都是「混淆」造成的假象！**
+:::
+
+## 臨床常見陷阱
+
+::: {.incremental}
+- **用 statin 的人心血管事件少** → 但他們本來就比較注重健康
+- **做篩檢的人存活較久** → Lead-time bias + 健康者偏誤
+- **ICU 用某藥的病人死亡率高** → 因為病情嚴重才用
+- **術後早期下床的病人恢復快** → 恢復好的才能下床
+:::
+
+::: {.fragment}
+### 關鍵思考
+
+> 是「治療 → 結果」，還是「某因素 → 治療 & 結果」？
+:::
+
+## 混淆的問題
+
+::: {.columns}
+::: {.column width="50%"}
+**為什麼直接比較會有偏誤？**
+
+醫師傾向開新藥給較輕症的病人
+
+→ 新藥組本來就會比較好
+:::
+::: {.column width="50%"}
+```{mermaid}
+%%| fig-width: 4
+flowchart TD
+    C[病人嚴重度] --> A[治療選擇]
+    C --> Y[結果]
+    A -.->|?| Y
+```
+:::
+:::
+
+## 小結：為什麼需要因果推論？
+
+::: {.incremental}
+1. 觀察性資料中，**關聯 ≠ 因果**
+2. 混淆因子會讓我們得到錯誤的結論
+3. 我們需要特殊方法來「模擬」隨機分配的效果
+:::
+
+::: {.fragment}
+> **下一步**：那要怎麼設計研究，才能回答因果問題呢？
+:::
+
+# 第二部分：研究設計思維 {data-stack-name="設計思維"}
+
+## 本節重點
+
+在開始分析之前，你需要先想清楚：
+
+::: {.incremental}
+- 你到底想回答什麼問題？
+- 如果可以做 RCT，你會怎麼設計？
+- 哪些變數該調整，哪些不該調整？
+:::
+
+## Target Trial Emulation
+
+**核心概念**：「如果能做 RCT，你會怎麼設計？」
+
+::: {.fragment}
+用觀察性資料模擬那個理想試驗
+:::
+
+## 為什麼需要 Target Trial？
+
+::: {.incremental}
+- 很多重要問題 **無法** 做 RCT（倫理、成本、時間）
+- 觀察性研究常犯的錯：沒有明確的研究設計
+- Target Trial 強迫你思考：「我到底在問什麼問題？」
+:::
+
+::: {.fragment}
+> "If you can't describe the trial you're trying to emulate, you probably shouldn't be doing the analysis."
+> — Miguel Hernán
+:::
+
+## RCT vs 觀察性研究
+
+| 步驟 | RCT | Target Trial Emulation |
+|:-----|:----|:-----------------------|
+| 定義資格條件 | Protocol 寫好 | 你要自己定義 |
+| 治療分配 | **隨機** | 觀察（需調整混淆）|
+| Time zero | 隨機分配時 | **你要明確定義** |
+| 追蹤 | Protocol 規定 | 資料庫限制 |
+| 分析 | ITT / Per-protocol | 模擬 ITT / Per-protocol |
+
+::: {.fragment}
+**關鍵差異**：RCT 的隨機化幫你處理混淆，觀察性研究要自己處理
+:::
+
+## Target Trial 實例
+
+::: {.callout-tip appearance="minimal"}
+## 研究問題：Statin 是否降低心血管死亡？
+:::
+
+::: {.columns}
+::: {.column width="50%"}
+**理想的 RCT**
+
+- 納入：40-75歲、高血脂
+- 隨機分配 statin vs placebo
+- 追蹤 5 年
+- 主要結局：CV 死亡
+:::
+::: {.column width="50%"}
+**用健保資料模擬**
+
+- 納入：同條件、首次診斷高血脂
+- 比較：開始用 statin vs 未使用
+- Time zero：診斷日
+- 追蹤至 CV 死亡或 5 年
+:::
+:::
+
+## Target Trial 七要素
+
+| 要素 | 你要定義的 |
+|------|-----------|
+| 資格條件 | 誰可以納入？ |
+| 治療策略 | 新藥 vs 什麼？ |
+| 治療分配 | 病人如何被分組（觀察性）|
+| 追蹤起點 | Time zero 是什麼時候？ |
+| 結果 | 主要 outcome |
+| 追蹤期間 | 追多久？ |
+| 因果對比 | 要估計什麼？ATE? |
+
+## ⚠️ 常見陷阱：Immortal Time Bias
+
+::: {.callout-warning appearance="minimal"}
+## 不死時間偏差
+病人必須「活到某時間點」才被歸類為治療組，導致治療組看起來比較好
+:::
+
+::: {.columns}
+::: {.column width="50%"}
+**錯誤設計**
+
+- 住院第 3 天開始用藥 → 歸為治療組
+- 但前 3 天是「不死時間」
+- 治療組先天存活優勢！
+:::
+::: {.column width="50%"}
+**正確做法**
+
+- Time zero = 符合條件的時間點
+- 所有人從同一起點開始追蹤
+- 或用時間變動模型處理
+:::
+:::
+
+## DAG 因果圖（簡化版）
+
+**三種變數**：
+
+::: {.incremental}
+- **混淆因子** (Confounder)：該調整
+  - 年齡：影響用藥選擇，也影響預後
+  - 共病：醫師考量共病決定治療，共病也影響結果
+- **中介變數** (Mediator)：不該調整
+  - 血壓下降：降壓藥 → 血壓↓ → 心血管事件↓
+  - 血糖控制：糖尿病藥 → HbA1c↓ → 併發症↓
+- **碰撞變數** (Collider)：不該調整
+  - 住院：疾病嚴重 → 住院 ← 治療副作用
+  - 存活到某時點：好體質 → 存活 ← 有效治療
+:::
+
+## DAG 視覺化：三種結構
+
+```{r}
+#| echo: false
+#| fig-width: 12
+#| fig-height: 4
+#| message: false
+
+library(ggdag)
+library(dagitty)
+library(patchwork)
+
+# 定義三種 DAG 結構
+# Confounder
+dag_confounder <- dagify(
+  Y ~ A + C,
+  A ~ C,
+  coords = list(x = c(A = 0, C = 1, Y = 2), y = c(A = 0, C = 1, Y = 0)),
+  labels = c(A = "治療", C = "年齡", Y = "結果")
+)
+
+# Mediator
+dag_mediator <- dagify(
+  Y ~ M,
+  M ~ A,
+  coords = list(x = c(A = 0, M = 1, Y = 2), y = c(A = 0, M = 0, Y = 0)),
+  labels = c(A = "降壓藥", M = "血壓↓", Y = "心血管事件↓")
+)
+
+# Collider
+dag_collider <- dagify(
+  C ~ A + U,
+  Y ~ U,
+  coords = list(
+    x = c(A = 0, C = 1, U = 2, Y = 2),
+    y = c(A = 1, C = 0, U = 1, Y = 0)
+  ),
+  labels = c(A = "治療", C = "住院", U = "嚴重度", Y = "結果")
+)
+
+# 繪製函數
+plot_dag <- function(dag, title, adjust_color = "gray80") {
+  ggdag(dag, text = FALSE, use_labels = "label") +
+    geom_dag_point(color = colors$accent, size = 18) +
+    geom_dag_text(color = "white", size = 3.5, family = "openhuninn") +
+    geom_dag_edges(edge_width = 1) +
+    labs(title = title) +
+    theme_dag() +
+    theme(
+      plot.title = element_text(
+        hjust = 0.5,
+        size = 14,
+        face = "bold",
+        family = "openhuninn"
+      )
+    )
+}
+
+p1 <- plot_dag(dag_confounder, "混淆因子 (Confounder)\n✅ 該調整")
+p2 <- plot_dag(dag_mediator, "中介變數 (Mediator)\n❌ 不該調整")
+p3 <- plot_dag(dag_collider, "碰撞變數 (Collider)\n❌ 不該調整")
+
+p1 + p2 + p3
+```
+
+::: {.fragment}
+**關鍵**：用 DAG 想清楚變數之間的關係，再決定調整什麼
+:::
+
+## 為什麼調整錯變數很危險？
+
+::: {.columns}
+::: {.column width="50%"}
+**調整中介變數**
+
+```{mermaid}
+%%| fig-width: 4
+flowchart LR
+    A[降壓藥] --> M[血壓↓]
+    M --> Y[心血管事件↓]
+```
+
+調整血壓 → 把藥效「調掉」了！
+:::
+::: {.column width="50%"}
+**調整碰撞變數**
+
+```{mermaid}
+%%| fig-width: 4
+flowchart TD
+    A[治療] --> C[住院]
+    U[未測量因子] --> C
+    U --> Y[結果]
+```
+
+調整住院 → 打開後門、引入偏誤！
+:::
+:::
+
+## 調整什麼？
+
+| 變數類型 | 調整？ | 原因 |
+|:---------|:------:|:-----|
+| 混淆因子 | ✅ | 阻斷後門路徑 |
+| 中介變數 | ❌ | 會移除治療效果 |
+| 碰撞變數 | ❌ | 會打開新的偏誤路徑 |
+| 工具變數 | ❌ | 只影響治療，不直接影響結果 |
+
+::: {.fragment}
+### 實務建議
+
+> 畫出 DAG，根據因果結構決定調整哪些變數，而非「把所有變數都丟進去」
+:::
+
+## 調整對 vs 調整錯：模擬比較
+
+```{r}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 5
+
+set.seed(42)
+n <- 1000
+
+# 模擬資料：真實效果是 -5
+# 情境 1：有 confounder 未調整 -> 有偏誤
+# 情境 2：調整 confounder -> 正確
+# 情境 3：調整 mediator -> 效果變小
+# 情境 4：調整 collider -> 產生偏誤
+
+true_effect <- -5
+
+# 模擬估計值和信賴區間
+results <- data.frame(
+  scenario = factor(
+    c(
+      "未調整\n（原始差異）",
+      "調整混淆因子\n（正確做法）",
+      "調整中介變數\n（錯誤：效果消失）",
+      "調整碰撞變數\n（錯誤：偏誤）"
+    ),
+    levels = c(
+      "未調整\n（原始差異）",
+      "調整混淆因子\n（正確做法）",
+      "調整中介變數\n（錯誤：效果消失）",
+      "調整碰撞變數\n（錯誤：偏誤）"
+    )
+  ),
+  estimate = c(-8.5, -5.1, -1.2, -7.8),
+  ci_lo = c(-10.2, -6.5, -2.8, -9.5),
+  ci_hi = c(-6.8, -3.7, 0.4, -6.1),
+  correct = c(FALSE, TRUE, FALSE, FALSE)
+)
+
+ggplot(results, aes(x = scenario, y = estimate, color = correct)) +
+  geom_hline(
+    yintercept = true_effect,
+    linetype = "dashed",
+    color = colors$accent,
+    linewidth = 1.2
+  ) +
+  geom_hline(yintercept = 0, color = "gray50") +
+  geom_pointrange(
+    aes(ymin = ci_lo, ymax = ci_hi),
+    size = 1.2,
+    linewidth = 1.2
+  ) +
+  geom_text(
+    aes(label = sprintf("%.1f", estimate)),
+    vjust = -1.5,
+    size = 5,
+    family = "openhuninn",
+    show.legend = FALSE
+  ) +
+  scale_color_manual(
+    values = c("TRUE" = colors$robust, "FALSE" = colors$fragile),
+    labels = c("TRUE" = "正確", "FALSE" = "有偏誤"),
+    name = ""
+  ) +
+  annotate(
+    "text",
+    x = 4.4,
+    y = true_effect,
+    label = "真實效果",
+    hjust = 0,
+    vjust = -0.5,
+    family = "openhuninn",
+    color = colors$accent,
+    size = 4
+  ) +
+  labs(
+    x = "",
+    y = "估計的治療效果",
+    title = "不同調整策略的結果"
+  ) +
+  coord_cartesian(ylim = c(-12, 2)) +
+  theme_causal() +
+  theme(
+    axis.text.x = element_text(size = 11),
+    legend.position = "top"
+  )
+```
+
+::: {.fragment}
+**結論**：調整錯誤的變數，比不調整還糟糕！
+:::
+
+## 三大因果假設
+
+| 假設 | 白話意思 | 怎麼處理 |
+|------|----------|----------|
+| 一致性 | 治療定義要明確 | 研究設計 |
+| 可交換性 | 沒有未測量混淆 | 調整 + 敏感度分析 |
+| 正值性 | 每種人都有機會接受各治療 | 檢查 PS 分布 |
+
+## 小結：研究設計思維
+
+::: {.incremental}
+1. 用 **Target Trial** 框架定義你的研究問題
+2. 用 **DAG** 畫出變數之間的因果關係
+3. 只調整 **混淆因子**，不調整中介變數和碰撞變數
+4. 確認三大假設是否合理
+:::
+
+::: {.fragment}
+> **下一步**：設計好了，那具體要用什麼統計方法呢？
+:::
+
+# 第三部分：方法概念 {data-stack-name="方法概念"}
+
+## 本節重點
+
+現在我們知道要調整混淆因子，但**怎麼調整**？
+
+::: {.incremental}
+- 傳統方法有什麼問題？
+- 什麼是「傾向分數」？
+- 為什麼推薦「雙重穩健」方法？
+:::
+
+## 傾向分數 (Propensity Score)
+
+**白話**：「根據病人特徵，預測他接受治療的機率」
+
+::: {.fragment}
+**用途**：讓兩組變得可比較
+:::
+
+## PS 是怎麼算出來的？
+
+```{r}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 5
+
+set.seed(123)
+n <- 200
+
+# 模擬病人資料
+age <- round(rnorm(n, 60, 10))
+severity <- plogis(-2 + 0.05 * age + rnorm(n, 0, 0.5))
+
+# 真實的 PS 模型
+true_ps <- plogis(-3 + 0.04 * age + 2 * severity)
+treatment <- rbinom(n, 1, true_ps)
+
+df_ps <- data.frame(
+  age = age,
+  severity = severity,
+  true_ps = true_ps,
+  treatment = factor(treatment, labels = c("對照組", "治療組"))
+)
+
+# 畫出 PS 與年齡/嚴重度的關係
+library(patchwork)
+
+p1 <- ggplot(df_ps, aes(x = age, y = true_ps, color = treatment)) +
+  geom_point(alpha = 0.6, size = 2.5) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 1.5, color = "gray30") +
+  scale_color_manual(
+    values = c("治療組" = colors$treatment, "對照組" = colors$control)
+  ) +
+  labs(
+    x = "年齡",
+    y = "Propensity Score",
+    color = "",
+    title = "年齡 → PS"
+  ) +
+  theme_causal(base_size = 14) +
+  theme(legend.position = "none")
+
+p2 <- ggplot(df_ps, aes(x = severity, y = true_ps, color = treatment)) +
+  geom_point(alpha = 0.6, size = 2.5) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 1.5, color = "gray30") +
+  scale_color_manual(
+    values = c("治療組" = colors$treatment, "對照組" = colors$control)
+  ) +
+  labs(
+    x = "嚴重度",
+    y = "Propensity Score",
+    color = "",
+    title = "嚴重度 → PS"
+  ) +
+  theme_causal(base_size = 14)
+
+p1 + p2 + plot_layout(guides = "collect") & theme(legend.position = "top")
+```
+
+::: {.fragment}
+**核心**：PS 把多個共變量壓縮成一個分數，代表「這個人被治療的機率」
+:::
+
+## Demo
+
+```{r}
+#| echo: false
+#| fig-width: 8
+#| fig-height: 4
+
+set.seed(42)
+n <- 500
+
+# Simulate PS with different distributions for treated vs control
+ps_treated <- rbeta(n, 5, 2) # Higher PS for treated
+ps_control <- rbeta(n, 2, 5) # Lower PS for control
+
+df <- data.frame(
+  ps = c(ps_treated, ps_control),
+  group = factor(rep(c("治療組", "對照組"), each = n))
+)
+
+ggplot(df, aes(x = ps, fill = group)) +
+  geom_density(alpha = 0.6) +
+  scale_fill_manual(
+    values = c("治療組" = colors$treatment, "對照組" = colors$control)
+  ) +
+  labs(
+    x = "Propensity Score",
+    y = "Density",
+    fill = ""
+  ) +
+  theme_causal()
+```
+
+::: {.fragment}
+**重疊區域**：兩組可比較的範圍
+:::
+
+## 傳統方法的問題
+
+| 方法 | 做法 | 風險 |
+|------|------|------|
+| 單純迴歸調整 | 把混淆因子丟進模型 | 模型設錯就完了 |
+| PS matching | 用 PS 配對 | 丟掉很多樣本 |
+| PS weighting (IPW) | 用 PS 加權 | 極端權重不穩定 |
+
+::: {.callout-note appearance="minimal"}
+## 名詞解釋
+- **PS matching**：找 PS 相近的治療組與對照組病人配對比較
+- **IPW (Inverse Probability Weighting)**：用 1/PS 當權重，讓兩組「人工平衡」
+:::
+
+## ⚠️ 為什麼不推薦單獨用 IPW？
+
+::: {.columns}
+::: {.column width="50%"}
+**IPW 的問題**
+
+當 PS 接近 0 或 1 時：
+
+- 權重 = 1/PS 會**爆炸**
+- 少數人主導整個估計
+- 方差巨大、估計飄動
+:::
+::: {.column width="50%"}
+**實際情況**
+
+幾百例的臨床資料：
+
+- 很常遇到重疊不佳
+- 某些病人 PS 很極端
+- IPW 會非常不穩定
+:::
+:::
+
+::: {.fragment}
+### 結論
+
+> IPW 可以當**敏感度分析**，但不建議當**主分析**
+:::
+
+## IPW 權重的危險：極端值
+
+```{r}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 5
+
+set.seed(456)
+n <- 500
+
+# 模擬一些極端的 PS 值
+ps_values <- c(
+  rbeta(n * 0.7, 3, 3), # 大多數人 PS 在中間
+  rbeta(n * 0.15, 0.5, 5), # 一些人 PS 很低
+  rbeta(n * 0.15, 5, 0.5) # 一些人 PS 很高
+)
+ps_values <- pmax(0.01, pmin(0.99, ps_values))
+
+# 計算 IPW 權重（簡化版：假設都是治療組）
+treatment <- rbinom(length(ps_values), 1, ps_values)
+ipw_weights <- ifelse(treatment == 1, 1 / ps_values, 1 / (1 - ps_values))
+
+df_ipw <- data.frame(
+  ps = ps_values,
+  weight = ipw_weights,
+  treatment = factor(treatment, labels = c("對照組", "治療組")),
+  extreme = ifelse(ipw_weights > 10, "極端權重 (>10)", "正常")
+)
+
+# 統計
+n_extreme <- sum(df_ipw$extreme == "極端權重 (>10)")
+pct_extreme <- round(100 * n_extreme / nrow(df_ipw), 1)
+
+p1 <- ggplot(df_ipw, aes(x = weight, fill = extreme)) +
+  geom_histogram(bins = 50, color = "white", linewidth = 0.2) +
+  geom_vline(
+    xintercept = 10,
+    linetype = "dashed",
+    color = colors$fragile,
+    linewidth = 1.2
+  ) +
+  scale_fill_manual(
+    values = c("極端權重 (>10)" = colors$fragile, "正常" = colors$control),
+    name = ""
+  ) +
+  scale_x_continuous(limits = c(0, 50)) +
+  annotate(
+    "text",
+    x = 12,
+    y = Inf,
+    label = paste0(n_extreme, " 人 (", pct_extreme, "%)\n權重 > 10"),
+    hjust = 0,
+    vjust = 1.5,
+    family = "openhuninn",
+    color = colors$fragile,
+    size = 4
+  ) +
+  annotate(
+    "text",
+    x = 2,
+    y = Inf,
+    label = "大多數人\n權重正常",
+    hjust = 0,
+    vjust = 1.5,
+    family = "openhuninn",
+    color = colors$control,
+    size = 4
+  ) +
+  labs(
+    x = "IPW 權重",
+    y = "人數",
+    title = "IPW 權重分布"
+  ) +
+  theme_causal(base_size = 14)
+
+p2 <- ggplot(df_ipw, aes(x = ps, y = weight, color = extreme)) +
+  geom_point(alpha = 0.6, size = 2) +
+  geom_hline(
+    yintercept = 10,
+    linetype = "dashed",
+    color = colors$fragile,
+    linewidth = 1
+  ) +
+  scale_color_manual(
+    values = c("極端權重 (>10)" = colors$fragile, "正常" = colors$control),
+    name = ""
+  ) +
+  scale_y_continuous(limits = c(0, 50)) +
+  annotate(
+    "text",
+    x = 0.05,
+    y = 45,
+    label = "PS 接近 0\n權重 = 1/(1-PS) 爆炸",
+    hjust = 0,
+    vjust = 1,
+    family = "openhuninn",
+    color = colors$fragile,
+    size = 3.5
+  ) +
+  annotate(
+    "text",
+    x = 0.85,
+    y = 45,
+    label = "PS 接近 1\n權重 = 1/PS 爆炸",
+    hjust = 0,
+    vjust = 1,
+    family = "openhuninn",
+    color = colors$fragile,
+    size = 3.5
+  ) +
+  annotate(
+    "curve",
+    x = 0.1, xend = 0.03,
+    y = 38, yend = 30,
+    curvature = 0.3,
+    arrow = arrow(length = unit(0.2, "cm")),
+    color = colors$fragile
+  ) +
+  annotate(
+    "curve",
+    x = 0.9, xend = 0.97,
+    y = 38, yend = 30,
+    curvature = -0.3,
+    arrow = arrow(length = unit(0.2, "cm")),
+    color = colors$fragile
+  ) +
+  labs(
+    x = "Propensity Score",
+    y = "IPW 權重",
+    title = "PS 極端 → 權重爆炸"
+  ) +
+  theme_causal(base_size = 14)
+
+p1 + p2 + plot_layout(guides = "collect") & theme(legend.position = "top")
+```
+
+::: {.fragment}
+**問題**：少數極端權重的人，主導了整個估計結果！
+:::
+
+## 雙重穩健估計（核心概念）
+
+::: {.callout-tip appearance="minimal"}
+## 什麼是「雙重穩健」(Doubly Robust)？
+同時用兩個模型來估計因果效應，只要其中一個模型正確，結果就不會有偏誤。就像買兩份保險！
+:::
+
+::: {.incremental}
+- 同時建兩個模型：PS 模型 + 結果模型
+- 好處：只要其中一個對，結果就對
+- 「買保險」的概念
+:::
+
+## TMLE vs AIPW
+
+::: {.callout-note appearance="minimal"}
+## 名詞解釋
+- **TMLE** (Targeted Maximum Likelihood Estimation)：針對「你想估計的東西」做最佳化的雙重穩健方法
+- **AIPW** (Augmented IPW)：在 IPW 基礎上加入結果模型修正的雙重穩健方法
+:::
+
+::: {.columns}
+::: {.column width="50%"}
+**共同點**
+
+- 都是雙重穩健
+:::
+::: {.column width="50%"}
+**TMLE 優勢**
+
+- 多一個 targeting 步驟
+- 更穩定
+:::
+:::
+
+::: {.fragment}
+**實務上：選 TMLE 就對了**
+:::
+
+## 雙重穩健：「錯一個也沒關係」
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 5
+
+# 建立 2x2 情境表
+dr_scenarios <- data.frame(
+  ps_model = rep(c("PS 模型\n正確", "PS 模型\n錯誤"), each = 2),
+  outcome_model = rep(c("Outcome 模型正確", "Outcome 模型錯誤"), 2),
+  result = c("無偏誤", "無偏誤", "無偏誤", "有偏誤"),
+  color = c("robust", "robust", "robust", "fragile")
+)
+
+dr_scenarios$ps_model <- factor(
+  dr_scenarios$ps_model,
+  levels = c("PS 模型\n正確", "PS 模型\n錯誤")
+)
+dr_scenarios$outcome_model <- factor(
+  dr_scenarios$outcome_model,
+  levels = c("Outcome 模型正確", "Outcome 模型錯誤")
+)
+
+ggplot(dr_scenarios, aes(x = outcome_model, y = ps_model, fill = color)) +
+  geom_tile(color = "white", linewidth = 3) +
+  geom_text(
+    aes(label = result),
+    size = 8,
+    family = "openhuninn",
+    fontface = "bold"
+  ) +
+  scale_fill_manual(
+    values = c("robust" = colors$robust, "fragile" = colors$fragile),
+    guide = "none"
+  ) +
+  labs(
+    x = "",
+    y = "",
+    title = "雙重穩健：4 種情境中 3 種都 OK"
+  ) +
+  theme_causal() +
+  theme(
+    axis.text = element_text(size = 14, face = "bold"),
+    plot.title = element_text(hjust = 0.5, size = 18),
+    panel.grid = element_blank()
+  )
+```
+
+::: {.fragment}
+**關鍵優勢**：只有當「兩個模型都錯」時才會有偏誤 → 大大降低風險
+:::
+
+## 但問題來了...
+
+::: {.callout-warning appearance="minimal"}
+## 雙重穩健的前提
+「至少一個模型要對」— 但我們怎麼確保？
+:::
+
+:::: {.columns}
+
+::: {.column width="50%"}
+**傳統做法**
+
+1. 手動選一個模型（如 logistic）
+2. 假設函數形式正確
+3. 祈禱沒選錯
+:::
+
+::: {.column width="50%"}
+**問題**
+
+- 真實關係可能是非線性的
+- 可能有交互作用
+- 選錯了 → 兩個模型都錯 → 偏誤！
+:::
+
+::::
+
+::: {.fragment}
+> **解法**：讓資料自己決定用哪個模型 → **Super Learner**
+:::
+
+## Super Learner（一句話解釋）
+
+::: {.callout-note appearance="minimal"}
+## 什麼是 Super Learner？
+一種「模型組合」技術：同時跑多個機器學習模型，用交叉驗證找出最佳加權組合。
+:::
+
+- 不用手動選模型，讓演算法自動找最佳組合
+- 大幅降低「兩個模型都錯」的機率
+- 這就是為什麼現代因果推論都用 TMLE + Super Learner
+
+## Super Learner 庫的選擇
+
+::: {.callout-warning appearance="minimal"}
+## 小樣本原則
+庫要**小且保守**，不要追求複雜！
+:::
+
+:::: {.columns}
+
+::: {.column width="50%"}
+**推薦的候選模型**
+
+- `SL.glm`：標準 logistic/線性
+- `SL.glmnet`：正則化（ridge/lasso）
+- `SL.gam`：平滑非線性
+- `SL.ranger`：（事件數夠才加）
+:::
+
+::: {.column width="50%"}
+**小樣本要避免**
+
+- 深樹 random forest
+- 大規模 boosting
+- 複雜超參數搜尋
+- 太多候選模型
+:::
+
+::::
+
+## Super Learner 庫：實例選擇
+
+| 情境 | 事件數 | 推薦的庫 |
+|------|--------|----------|
+| 罕見疾病 RCT | 30-50 | `SL.glm`, `SL.glmnet` |
+| 一般臨床研究 | 50-200 | `SL.glm`, `SL.glmnet`, `SL.gam` |
+| 大型健保資料庫 | 500+ | 上述 + `SL.ranger`, `SL.xgboost` |
+| 超大資料 | 5000+ | 可加更多彈性模型 |
+
+::: {.fragment}
+::: {.callout-tip appearance="minimal"}
+## 經驗法則
+事件數 ÷ 10 ≈ 可用的候選模型數上限
+:::
+:::
+
+## 使用 ML 模型的隱憂
+
+::: {.callout-warning appearance="minimal"}
+## 問題
+Super Learner 用了彈性的機器學習模型，但這會帶來一個統計問題...
+:::
+
+:::: {.columns}
+
+::: {.column width="50%"}
+**傳統迴歸**
+
+- 模型簡單、參數少
+- 用同一筆資料擬合 + 推論 → OK
+:::
+
+::: {.column width="50%"}
+**機器學習模型**
+
+- 模型複雜、容易過擬合
+- 用同一筆資料擬合 + 推論 → 標準誤會偏小、信賴區間不可靠
+:::
+
+::::
+
+::: {.fragment}
+> **白話說**：模型「記住」了資料的噪音，導致我們對效果估計過度自信
+:::
+
+## Cross-Fitting（交叉擬合）
+
+::: {.callout-tip appearance="minimal"}
+## 解法
+用**不同的資料**來擬合模型和估計效應 → 避免過擬合影響推論
+:::
+
+**做法**：
+
+::: {.incremental}
+1. 把資料分成 K 折（幾百例建議 **2-fold**）
+2. 用 K-1 折擬合模型
+3. 用剩下 1 折預測
+4. 輪流做，最後合併
+:::
+
+::: {.fragment}
+`tmle3` 和 `ltmle` 套件會自動幫你做！
+:::
+
+## PS 截斷（Truncation）
+
+::: {.callout-warning appearance="minimal"}
+## 問題
+PS 太接近 0 或 1 時，權重會爆炸
+:::
+
+**解法**：把 PS 限制在合理範圍
+
+```r
+# 常見截斷範圍
+ps_truncated <- pmax(0.01, pmin(0.99, ps)) # 寬鬆
+ps_truncated <- pmax(0.05, pmin(0.95, ps)) # 保守
+```
+
+::: {.callout-important appearance="minimal"}
+## 重要提醒
+截斷範圍要**預先宣告**，不要事後調參（避免 p-hacking 嫌疑）
+:::
+
+## 小結：方法概念
+
+到目前為止，我們學了：
+
+| 概念 | 重點 |
+|------|------|
+| 傾向分數 (PS) | 預測接受治療的機率，讓兩組可比 |
+| 雙重穩健 | 兩個模型，錯一個也沒關係 |
+| TMLE | 最推薦的雙重穩健方法 |
+| Super Learner | 自動選最佳模型組合 |
+
+::: {.fragment}
+> **下一步**：不同類型的結果變數，要用什麼方法？
+:::
+
+# 第四部分：情境選擇菜單 {data-stack-name="方法選擇"}
+
+## 本節重點
+
+你的研究結果是什麼類型？
+
+- 連續變數？（血壓、HbA1c）
+- 二元變數？（死亡 Y/N）
+- 存活時間？（死亡時間）
+
+::: {.fragment}
+**不同類型 → 不同方法 → 不同 R 套件**
+:::
+
+## 一張表搞定方法選擇
+
+| Outcome 類型 | 範例 | 估計什麼 | R 套件 |
+|--------------|------|----------|--------|
+| 連續 | 血壓、HbA1c | 平均差 | `tmle` |
+| 二元 | 死亡 Y/N | Risk Diff / RR | `tmle` |
+| 存活 | 死亡時間 | Survival diff | `survtmle` |
+| 計數 | 住院次數 | Rate Ratio | `WeightIt` |
+| 重複測量 | 多時間點追蹤 | 軌跡差異 | `geepack` |
+
+## Estimand 的選擇
+
+::: {.callout-note appearance="minimal"}
+## 名詞解釋
+- **Estimand**：你想估計的「目標量」，要先定義清楚才能選方法
+- **ATE** (Average Treatment Effect)：如果讓「所有人」都接受治療 vs 都不接受，平均差異是多少？
+- **ATT** (Average Treatment Effect on the Treated)：對於「實際接受治療的人」，治療效果是多少？
+:::
+
+## ATE vs ATT：什麼時候用哪個？
+
+::: {.columns}
+::: {.column width="50%"}
+**ATE（全體平均效果）**
+
+- 問：「如果政策推廣給所有人」
+- 需要兩組**充分重疊**
+- 樣本小、重疊差時**很不穩定**
+:::
+::: {.column width="50%"}
+**ATT（已治療者效果）**
+
+- 問：「對已經用這治療的人」
+- 只需對照組能代表治療組
+- 重疊不佳時**更實際可估**
+:::
+:::
+
+::: {.fragment}
+### 實務建議
+
+> 幾百例的臨床資料，**優先考慮 ATT**，除非重疊非常好
+:::
+
+## 小結：選擇方法
+
+::: {.incremental}
+1. 先確定你的 **結果類型**（連續/二元/存活/計數）
+2. 再決定你要估計的 **目標量**（ATE/ATT）
+3. 然後選擇對應的 **R 套件**
+:::
+
+::: {.fragment}
+> **下一步**：方法選好了，資料要怎麼準備？
+:::
+
+# 第五部分：資料準備 {data-stack-name="資料準備"}
+
+## 本節重點
+
+在跑分析之前，資料要先整理好：
+
+::: {.incremental}
+- 資料格式長什麼樣？
+- 哪些變數要放進去？
+- 有哪些常見的陷阱？
+:::
+
+## 資料格式要求
+
+::: {.columns}
+::: {.column width="50%"}
+```{r}
+#| echo: false
+#| message: false
+library(gtsummary)
+library(dplyr)
+
+set.seed(2024)
+n <- 200
+
+age <- round(rnorm(n, 60, 12))
+sex <- sample(c("男", "女"), n, replace = TRUE)
+ecog <- sample(0:2, n, replace = TRUE, prob = c(0.3, 0.5, 0.2))
+comorbidity <- sample(0:2, n, replace = TRUE)
+ps <- plogis(
+  -1 + 0.03 * age - 0.5 * (sex == "女") - 0.3 * ecog + 0.2 * comorbidity
+)
+treatment <- rbinom(n, 1, ps)
+outcome <- rbinom(n, 1, plogis(-2 + 0.02 * age - 0.8 * treatment + 0.3 * ecog))
+
+data.frame(
+  treatment = factor(treatment, labels = c("對照組", "治療組")),
+  age = age,
+  sex = sex,
+  ecog = factor(ecog),
+  comorbidity = comorbidity,
+  outcome = factor(outcome, labels = c("存活", "死亡"))
+) |>
+  tbl_summary(
+    by = treatment,
+    label = list(
+      age ~ "年齡",
+      sex ~ "性別",
+      ecog ~ "ECOG",
+      comorbidity ~ "共病數",
+      outcome ~ "結果"
+    )
+  ) |>
+  add_p() |>
+  as_gt() |>
+  gt::tab_options(
+    table.font.size = gt::px(14),
+    data_row.padding = gt::px(2),
+    row_group.padding = gt::px(2)
+  )
+```
+:::
+::: {.column width="50%"}
+**觀察到什麼？**
+
+- 治療組年齡較高、男性較多
+- 兩組 baseline 特徵不平衡
+
+**陷阱**
+
+- 直接比較結果會有偏誤
+- 需要調整混淆因子
+- 這就是為什麼需要因果推論方法！
+:::
+:::
+
+## 資料品質檢查（比模型更重要！）
+
+在跑任何分析之前，**先做這三件事**：
+
+::: {.incremental}
+1. **缺失值處理**：不要默默刪除！
+2. **重疊檢查**：兩組是否可比？
+3. **事件數評估**：樣本夠不夠穩定？
+:::
+
+## 缺失值處理
+
+::: {.callout-warning appearance="minimal"}
+## 常見錯誤
+直接刪除有缺失的個案（listwise deletion），假裝沒事
+:::
+
+| 缺失機制 | 意思 | 處理方式 |
+|----------|------|----------|
+| MCAR | 完全隨機缺失 | 刪除還可以（但浪費資料）|
+| MAR | 可觀察變數可解釋 | **多重插補** (Multiple Imputation) |
+| MNAR | 缺失本身有意義 | 敏感度分析 |
+
+::: {.fragment}
+**建議**：用 `mice` 套件做多重插補，在每套插補資料內分析再合併
+:::
+
+## 重疊檢查（Overlap / Positivity）
+
+:::: {.columns}
+
+::: {.column width="50%"}
+```{r}
+#| echo: false
+#| fig-width: 6
+#| fig-height: 5
+
+set.seed(789)
+n <- 400
+
+# 好的重疊：兩組 PS 大量重疊
+ps_good_treated <- rbeta(n / 2, 3, 3) * 0.6 + 0.2
+ps_good_control <- rbeta(n / 2, 3, 3) * 0.6 + 0.2
+
+df_good <- data.frame(
+  ps = c(ps_good_treated, ps_good_control),
+  group = factor(rep(c("治療組", "對照組"), each = n / 2))
+)
+
+ggplot(df_good, aes(x = ps, fill = group)) +
+  geom_density(alpha = 0.6, color = "white") +
+  scale_fill_manual(
+    values = c("治療組" = colors$treatment, "對照組" = colors$control)
+  ) +
+  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+  labs(
+    title = "✅ 好的重疊",
+    x = "Propensity Score",
+    y = "Density",
+    fill = ""
+  ) +
+  theme_causal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    legend.position = "top"
+  )
+```
+
+- 兩組 PS 分布大量重疊
+- 可以估計 ATE
+:::
+
+::: {.column width="50%"}
+```{r}
+#| echo: false
+#| fig-width: 6
+#| fig-height: 5
+
+# 差的重疊：兩組 PS 幾乎不重疊
+ps_bad_treated <- rbeta(n / 2, 5, 2) * 0.4 + 0.55
+ps_bad_control <- rbeta(n / 2, 2, 5) * 0.4 + 0.05
+
+df_bad <- data.frame(
+  ps = c(ps_bad_treated, ps_bad_control),
+  group = factor(rep(c("治療組", "對照組"), each = n / 2))
+)
+
+ggplot(df_bad, aes(x = ps, fill = group)) +
+  geom_density(alpha = 0.6, color = "white") +
+  scale_fill_manual(
+    values = c("治療組" = colors$treatment, "對照組" = colors$control)
+  ) +
+  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+  labs(
+    title = "❌ 差的重疊",
+    x = "Propensity Score",
+    y = "Density",
+    fill = ""
+  ) +
+  theme_causal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    legend.position = "top"
+  )
+```
+
+- 兩組 PS 幾乎不重疊
+- 應改估 ATT 或限制分析範圍
+:::
+
+::::
+
+::: {.fragment}
+### 重疊不好怎麼辦？
+
+1. 改估 **ATT**（只看治療組的效果）
+2. **Trimming**：排除 PS 極端的個案
+3. **Overlap weights**：給重疊區域較高權重
+:::
+
+## 事件數評估
+
+::: {.callout-note appearance="minimal"}
+## 經驗法則
+二元結局時，事件數 < 50 會讓任何高自由度模型都很不穩定
+:::
+
+| 事件數 | 建議 |
+|--------|------|
+| < 30 | 極度保守：只調整 2-3 個最重要混淆因子 |
+| 30-50 | 保守：用正則化模型、減少變數 |
+| 50-100 | 標準分析可行，但 Super Learner 庫要小 |
+| > 100 | 可以用較彈性的模型 |
+
+## 常見資料問題總表
+
+| 問題 | 解法 |
+|------|------|
+| 遺漏值 | Multiple imputation（先處理）|
+| 混淆因子放錯時間點 | 只能用 baseline 的 |
+| Time zero 不明確 | 仔細定義追蹤起點 |
+| 治療定義模糊 | 明確定義什麼算「接受治療」|
+| 重疊不佳 | 改 ATT、trimming、或限制分析範圍 |
+| 事件數太少 | 減少調整變數、用正則化 |
+
+## 存活資料格式
+
+```{.r code-line-numbers="1-5|6"}
+df_surv <- data.frame(
+  id = ...,
+  treatment = ...,
+  time = ..., # 追蹤時間
+  event = ..., # 1=事件，0=設限
+  # 混淆因子...
+)
+```
+
+::: {.fragment}
+> **下一步**：資料準備好了，來看實際的 R 程式碼！
+:::
+
+# 第六部分：R 實作示範 {data-stack-name="R 實作"}
+
+## 本節重點
+
+終於要寫 code 了！這一節會示範：
+
+::: {.incremental}
+- 連續結果：用 `tmle` 套件
+- 二元結果：用 `tmle` 套件
+- 存活結果：用 `survtmle` 套件
+- **平衡診斷**：確認調整有效
+:::
+
+## 完整分析流程：5 步驟視覺化
+
+```{r}
+#| echo: false
+#| fig-width: 12
+#| fig-height: 6
+
+set.seed(42)
+
+# 模擬更真實的臨床情境：醫師傾向開新藥給年輕、健康的病人
+# 治療組：較年輕
+n_treat <- 150
+n_ctrl <- 150
+
+# 治療組年齡較低（醫師偏好）
+age_treat <- round(rnorm(n_treat, 52, 10))
+age_ctrl <- round(rnorm(n_ctrl, 62, 10))
+
+# 治療組共病較少
+comorbidity_treat <- rpois(n_treat, 1.0)
+comorbidity_ctrl <- rpois(n_ctrl, 2.5)
+
+df_workflow <- data.frame(
+  age = c(age_treat, age_ctrl),
+  comorbidity = c(comorbidity_treat, comorbidity_ctrl),
+  treatment = factor(
+    c(rep(1, n_treat), rep(0, n_ctrl)),
+    labels = c("對照組", "治療組")
+  ),
+  treatment_num = c(rep(1, n_treat), rep(0, n_ctrl))
+)
+
+# 計算 PS（用 logistic regression）
+ps_model <- glm(
+  treatment_num ~ age + comorbidity,
+  data = df_workflow,
+  family = binomial
+)
+df_workflow$ps <- predict(ps_model, type = "response")
+
+# 創建 5 個子圖
+library(patchwork)
+
+# Step 1: 原始不平衡 - 年齡分布差異明顯
+p1 <- ggplot(df_workflow, aes(x = age, fill = treatment)) +
+  geom_density(alpha = 0.6) +
+  scale_fill_manual(
+    values = c("對照組" = colors$control, "治療組" = colors$treatment)
+  ) +
+  labs(
+    title = "Step 1: 原始資料（不平衡）",
+    x = "年齡",
+    y = "Density",
+    fill = ""
+  ) +
+  theme_causal(base_size = 12) +
+  theme(legend.position = "bottom")
+
+# Step 2: 計算 PS - 顯示年齡如何預測 PS
+p2 <- ggplot(df_workflow, aes(x = age, y = ps, color = treatment)) +
+  geom_point(alpha = 0.6, size = 1.5) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 1.2) +
+  scale_color_manual(
+    values = c("對照組" = colors$control, "治療組" = colors$treatment)
+  ) +
+  labs(
+    title = "Step 2: 計算 PS",
+    x = "年齡",
+    y = "Propensity Score",
+    color = ""
+  ) +
+  theme_causal(base_size = 12) +
+  theme(legend.position = "bottom")
+
+# Step 3: 檢查重疊 - PS 分布有重疊
+p3 <- ggplot(df_workflow, aes(x = ps, fill = treatment)) +
+  geom_density(alpha = 0.6) +
+  scale_fill_manual(
+    values = c("對照組" = colors$control, "治療組" = colors$treatment)
+  ) +
+  labs(
+    title = "Step 3: 檢查重疊",
+    x = "Propensity Score",
+    y = "Density",
+    fill = ""
+  ) +
+  theme_causal(base_size = 12) +
+  theme(legend.position = "bottom")
+
+# Step 4: SMD 改善 - 從實際資料計算
+mean_age_treat <- mean(df_workflow$age[df_workflow$treatment_num == 1])
+mean_age_ctrl <- mean(df_workflow$age[df_workflow$treatment_num == 0])
+sd_age <- sd(df_workflow$age)
+smd_age_before <- abs(mean_age_treat - mean_age_ctrl) / sd_age
+
+mean_comor_treat <- mean(df_workflow$comorbidity[
+  df_workflow$treatment_num == 1
+])
+mean_comor_ctrl <- mean(df_workflow$comorbidity[df_workflow$treatment_num == 0])
+sd_comor <- sd(df_workflow$comorbidity)
+smd_comor_before <- abs(mean_comor_treat - mean_comor_ctrl) / sd_comor
+
+smd_data <- data.frame(
+  variable = c("年齡", "共病數"),
+  before = round(c(smd_age_before, smd_comor_before), 2),
+  after = c(0.05, 0.04) # 加權後假設平衡良好
+)
+smd_long <- tidyr::pivot_longer(
+  smd_data,
+  cols = c(before, after),
+  names_to = "timing",
+  values_to = "smd"
+)
+smd_long$timing <- factor(
+  smd_long$timing,
+  levels = c("before", "after"),
+  labels = c("加權前", "加權後")
+)
+
+p4 <- ggplot(
+  smd_long,
+  aes(x = smd, y = variable, color = timing, shape = timing)
+) +
+  geom_point(size = 4) +
+  geom_vline(xintercept = 0.1, linetype = "dashed", color = "red") +
+  scale_color_manual(
+    values = c("加權前" = colors$fragile, "加權後" = colors$robust)
+  ) +
+  scale_x_continuous(limits = c(0, 1.2)) +
+  labs(
+    title = "Step 4: 加權後平衡",
+    x = "SMD",
+    y = "",
+    color = "",
+    shape = ""
+  ) +
+  theme_causal(base_size = 12) +
+  theme(legend.position = "bottom")
+
+# Step 5: 估計效果 - 原始差異 vs 調整後
+effect_data <- data.frame(
+  method = c("原始差異\n（有偏誤）", "TMLE 估計\n（校正後）"),
+  estimate = c(-0.20, -0.08),
+  ci_lo = c(-0.28, -0.14),
+  ci_hi = c(-0.12, -0.02)
+)
+effect_data$method <- factor(
+  effect_data$method,
+  levels = c("原始差異\n（有偏誤）", "TMLE 估計\n（校正後）")
+)
+
+p5 <- ggplot(effect_data, aes(x = method, y = estimate, color = method)) +
+  geom_hline(yintercept = 0, linetype = "solid", color = "gray50") +
+  geom_pointrange(
+    aes(ymin = ci_lo, ymax = ci_hi),
+    size = 1.2,
+    linewidth = 1.5
+  ) +
+  scale_color_manual(
+    values = c(
+      "原始差異\n（有偏誤）" = colors$fragile,
+      "TMLE 估計\n（校正後）" = colors$robust
+    )
+  ) +
+  scale_y_continuous(limits = c(-0.35, 0.05)) +
+  labs(title = "Step 5: 估計因果效應", x = "", y = "Risk Difference") +
+  theme_causal(base_size = 12) +
+  theme(legend.position = "none")
+
+# 組合
+(p1 | p2 | p3) /
+  (p4 | p5) +
+  plot_annotation(
+    title = "因果推論分析流程",
+    theme = theme(
+      plot.title = element_text(
+        size = 18,
+        face = "bold",
+        family = "openhuninn",
+        hjust = 0.5
+      )
+    )
+  )
+```
+
+::: {.fragment}
+**從資料到結論**：每一步都要檢查，不是跑完程式就結束！
+:::
+
+```{r}
+#| label: setup-tmle
+#| include: false
+#| cache: true
+
+# 載入套件
+library(tmle)
+library(SuperLearner)
+library(dplyr)
+
+# 定義 Super Learner 庫（小樣本用保守設定）
+SL.lib <- c("SL.glm", "SL.glmnet")
+
+# 載入資料
+df_cont <- read.csv("data/df_continuous.csv")
+df_bin <- read.csv("data/df_binary.csv")
+df_surv <- read.csv("data/df_survival.csv")
+```
+
+## 連續結果完整範例
+
+```{.r}
+library(tmle)
+library(SuperLearner)
+
+SL.lib <- c("SL.glm", "SL.glmnet")
+
+fit_cont <- tmle(
+  Y = df$outcome,
+  A = df$treatment,
+  W = df %>% select(age, sex, comorbidity, severity),
+  Q.SL.library = SL.lib,
+  g.SL.library = SL.lib,
+  family = "gaussian"
+)
+
+fit_cont$estimates$ATE
+```
+
+::: {.fragment .current-only data-code-focus="1-2"}
+載入 `tmle` 和 `SuperLearner` 套件，這是雙重穩健估計的核心工具。
+:::
+
+::: {.fragment .current-only data-code-focus="4"}
+定義 Super Learner 的候選模型庫：GLM（線性）+ GLMNet（正則化）。小樣本建議保守設定。
+:::
+
+::: {.fragment .current-only data-code-focus="6-13"}
+執行 TMLE：`Y` 是結果、`A` 是治療、`W` 是混淆因子。`Q.SL.library` 用於結果模型，`g.SL.library` 用於 PS 模型。
+:::
+
+::: {.fragment .current-only data-code-focus="15"}
+提取 ATE 估計值，包含點估計和 95% 信賴區間。
+:::
+
+## 連續結果：執行結果
+
+```{r}
+#| label: tmle-continuous
+#| echo: false
+#| cache: true
+
+fit_cont <- tmle(
+  Y = df_cont$outcome,
+  A = df_cont$treatment,
+  W = df_cont %>% select(age, sex, comorbidity, severity),
+  Q.SL.library = SL.lib,
+  g.SL.library = SL.lib,
+  family = "gaussian"
+)
+```
+
+```{r}
+#| label: tmle-continuous-result
+#| echo: true
+
+fit_cont$estimates$ATE
+```
+
+::: {.fragment}
+**解讀**：治療組平均血壓下降比對照組多約 `r round(fit_cont$estimates$ATE$psi, 1)` mmHg（95% CI: `r round(fit_cont$estimates$ATE$CI[1], 1)` 至 `r round(fit_cont$estimates$ATE$CI[2], 1)`）
+:::
+
+## 二元結果
+
+```{.r}
+fit_bin <- tmle(
+  Y = df$death,
+  A = df$treatment,
+  W = df %>% select(age, sex, comorbidity, severity),
+  Q.SL.library = SL.lib,
+  g.SL.library = SL.lib,
+  family = "binomial"
+)
+
+fit_bin$estimates$ATE # Risk Difference
+fit_bin$estimates$RR  # Risk Ratio
+```
+
+::: {.fragment .current-only data-code-focus="1-8"}
+二元結果只需改兩處：`Y` 改成 0/1 變數（如死亡），`family` 改成 `"binomial"`。
+:::
+
+::: {.fragment .current-only data-code-focus="10-11"}
+二元結果可以提取 **Risk Difference**（風險差）和 **Risk Ratio**（相對風險）兩種 estimand。
+:::
+
+## 二元結果：執行結果
+
+```{r}
+#| label: tmle-binary
+#| echo: false
+#| cache: true
+
+fit_bin <- tmle(
+  Y = df_bin$death,
+  A = df_bin$treatment,
+  W = df_bin %>% select(age, sex, comorbidity, severity),
+  Q.SL.library = SL.lib,
+  g.SL.library = SL.lib,
+  family = "binomial"
+)
+```
+
+:::: {.columns}
+
+::: {.column width="50%"}
+**Risk Difference**
+
+```{r}
+#| label: tmle-binary-rd
+#| echo: true
+
+fit_bin$estimates$ATE
+```
+:::
+
+::: {.column width="50%"}
+**Risk Ratio**
+
+```{r}
+#| label: tmle-binary-rr
+#| echo: true
+
+fit_bin$estimates$RR
+```
+:::
+
+::::
+
+::: {.fragment}
+**解讀**：治療降低死亡風險約 `r round(abs(fit_bin$estimates$ATE$psi) * 100, 1)`%（RD = `r round(fit_bin$estimates$ATE$psi, 3)`）
+:::
+
+## 存活結果：TMLE 方法
+
+```{.r}
+library(survtmle)
+
+fit_surv <- survtmle(
+  ftime = df$time,
+  ftype = df$event,
+  trt = df$treatment,
+  adjustVars = df %>% select(age, sex, comorbidity, severity),
+  t0 = 365,
+  SL.ftime = SL.lib,
+  SL.ctime = SL.lib,
+  SL.trt = SL.lib,
+  method = "hazard"
+)
+```
+
+::: {.fragment .current-only data-code-focus="1"}
+存活分析需要專用的 `survtmle` 套件。
+:::
+
+::: {.fragment .current-only data-code-focus="4-6"}
+`ftime` 是追蹤時間、`ftype` 是事件指標（1=事件，0=設限）、`trt` 是治療變數。
+:::
+
+::: {.fragment .current-only data-code-focus="7-8"}
+`adjustVars` 放混淆因子，`t0` 指定要估計的時間點（如 365 天）。
+:::
+
+::: {.fragment .current-only data-code-focus="9-12"}
+三個 Super Learner 庫分別用於：事件時間模型、設限時間模型、治療模型。
+:::
+
+## 存活結果：IPW 替代方法
+
+```{.r}
+library(survival)
+library(WeightIt)
+
+# 計算 PS 權重
+w <- weightit(treatment ~ age + sex + comorbidity + severity,
+              data = df_surv, method = "ps")
+
+# 加權 Cox 迴歸
+fit_cox <- coxph(Surv(time, event) ~ treatment,
+                 data = df_surv, weights = w$weights)
+```
+
+::: {.fragment .current-only data-code-focus="1-2"}
+使用 `survival` 做存活分析，`WeightIt` 計算傾向分數權重。
+:::
+
+::: {.fragment .current-only data-code-focus="4-5"}
+用 `weightit()` 估計 PS 並計算 IPW 權重。
+:::
+
+::: {.fragment .current-only data-code-focus="7-8"}
+將權重帶入 `coxph()`，估計加權後的 Hazard Ratio。
+:::
+
+## 存活結果：執行結果
+
+```{r}
+#| label: survival-ipw
+#| echo: false
+#| cache: true
+#| message: false
+
+library(survival)
+library(WeightIt)
+
+# 計算 PS 權重
+w_surv <- weightit(treatment ~ age + sex + comorbidity + severity,
+                   data = df_surv, method = "ps")
+
+# 加權 Cox 迴歸
+fit_cox <- coxph(Surv(time, event) ~ treatment,
+                 data = df_surv, weights = w_surv$weights)
+```
+
+```{r}
+#| label: survival-ipw-result
+#| echo: true
+
+summary(fit_cox)$conf.int
+```
+
+::: {.fragment}
+**解讀**：加權後 HR = `r round(exp(coef(fit_cox)), 2)`，表示治療組的死亡風險是對照組的 `r round(exp(coef(fit_cox)) * 100, 0)`%
+:::
+
+## 平衡診斷
+
+```{.r}
+library(cobalt)
+library(WeightIt)
+
+w <- weightit(
+  treatment ~ age + sex + comorbidity + severity,
+  data = df,
+  method = "ps"
+)
+
+# SMD 檢查
+bal.tab(w, thresholds = c(m = 0.1))
+
+# 視覺化
+love.plot(w, thresholds = c(m = 0.1))
+```
+
+::: {.fragment .current-only data-code-focus="1-2"}
+`cobalt` 用於平衡診斷，`WeightIt` 用於計算傾向分數權重。
+:::
+
+::: {.fragment .current-only data-code-focus="4-8"}
+用 `weightit()` 計算權重：公式指定混淆因子，`method = "ps"` 使用 logistic regression 估計 PS。
+:::
+
+::: {.fragment .current-only data-code-focus="10-11"}
+`bal.tab()` 檢查 SMD，設定閾值 0.1，超過表示平衡不佳。
+:::
+
+::: {.fragment .current-only data-code-focus="13-14"}
+`love.plot()` 畫出 Love Plot，視覺化加權前後的 SMD 變化。
+:::
+
+## 平衡診斷：執行結果
+
+```{r}
+#| label: balance-check
+#| echo: false
+#| cache: true
+#| message: false
+
+library(cobalt)
+
+# 使用之前計算的權重
+w_bal <- weightit(
+  treatment ~ age + sex + comorbidity + severity,
+  data = df_bin,
+  method = "ps"
+)
+```
+
+```{r}
+#| label: balance-table
+#| echo: true
+
+bal.tab(w_bal, thresholds = c(m = 0.1))
+```
+
+## 平衡診斷：Love Plot
+
+```{r}
+#| label: love-plot-real
+#| echo: true
+#| fig-width: 8
+#| fig-height: 5
+
+love.plot(w_bal, thresholds = c(m = 0.1)) +
+  theme_causal()
+```
+
+::: {.fragment}
+**目標**：加權後所有變數的 SMD < 0.1（虛線左側）
+:::
+
+## Love Plot：更多變數範例
+
+```{r}
+#| echo: false
+#| fig-width: 8
+#| fig-height: 5
+
+set.seed(123)
+
+# Simulate SMD data before and after weighting (更多變數的情境)
+vars <- c("年齡", "性別", "共病數", "嚴重度", "BMI", "抽菸", "糖尿病", "高血壓")
+smd_before <- c(0.35, 0.22, 0.41, 0.28, 0.15, 0.33, 0.25, 0.19)
+smd_after <- c(0.05, 0.03, 0.08, 0.04, 0.02, 0.06, 0.04, 0.03)
+
+df_smd <- data.frame(
+  variable = rep(vars, 2),
+  smd = c(smd_before, smd_after),
+  timing = factor(
+    rep(c("加權前", "加權後"), each = length(vars)),
+    levels = c("加權前", "加權後")
+  )
+)
+
+ggplot(
+  df_smd,
+  aes(x = smd, y = reorder(variable, smd), color = timing, shape = timing)
+) +
+  geom_point(size = 4) +
+  geom_vline(
+    xintercept = 0.1,
+    linetype = "dashed",
+    color = "red",
+    linewidth = 1
+  ) +
+  scale_color_manual(
+    values = c("加權前" = colors$treatment, "加權後" = colors$control)
+  ) +
+  labs(
+    x = "Standardized Mean Difference (SMD)",
+    y = "",
+    color = "",
+    shape = ""
+  ) +
+  annotate(
+    "text",
+    x = 0.12,
+    y = 1,
+    label = "閾值 0.1",
+    color = "red",
+    hjust = 0,
+    family = "openhuninn",
+    size = 5
+  ) +
+  theme_causal()
+```
+
+::: {.fragment}
+**目標**：加權後所有 SMD < 0.1
+:::
+
+## PS 重疊檢查
+
+```r
+ggplot(df, aes(x = ps, fill = factor(treatment))) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Propensity Score Overlap")
+```
+
+## 權重診斷（很重要！）
+
+::: {.callout-warning appearance="minimal"}
+## 為什麼要檢查權重？
+極端權重 = 少數人主導估計 = 結果不可信
+:::
+
+```r
+# 檢查權重分布
+summary(w$weights)
+
+# 最大權重（不要太大）
+max(w$weights)
+
+# 有效樣本量（不要掉太多）
+sum(w$weights)^2 / sum(w$weights^2)
+```
+
+## 有效樣本量 (Effective Sample Size)
+
+::: {.columns}
+::: {.column width="50%"}
+**原始樣本量**：500 人
+
+**加權後有效樣本量**：
+
+$$n_{eff} = \frac{(\sum w_i)^2}{\sum w_i^2}$$
+:::
+::: {.column width="50%"}
+**解讀**
+
+- $n_{eff}$ ≈ 原始 N → 權重均勻，好
+- $n_{eff}$ << 原始 N → 少數人主導，警告！
+:::
+:::
+
+::: {.fragment}
+### 經驗法則
+
+> 有效樣本量掉到原始的 50% 以下，要小心解讀結果
+:::
+
+## 診斷清單（審稿者會看！）
+
+| 診斷項目 | 目標 | R 函數 |
+|----------|------|--------|
+| SMD | 全部 < 0.1 | `cobalt::bal.tab()` |
+| PS 重疊 | 充分重疊 | 密度圖 |
+| 最大權重 | 不要太極端 | `max(weights)` |
+| 有效樣本量 | 不要掉太多 | 公式計算 |
+
+::: {.fragment}
+**報告時務必呈現這四項！**
+:::
+
+## 小結：R 實作
+
+完成分析後，你應該有：
+
+| 項目 | 確認 |
+|------|------|
+| TMLE 估計值 | ✅ ATE 和 95% CI |
+| 平衡診斷 | ✅ SMD < 0.1 |
+| PS 重疊 | ✅ 兩組有足夠重疊 |
+
+::: {.fragment}
+> **但是**...就算一切都做對了，還有一個問題：**未測量的混淆因子**
+:::
+
+# 第七部分：敏感度分析 {data-stack-name="敏感度"}
+
+## 本節重點
+
+你可能會問：「如果有我沒測量到的混淆因子怎麼辦？」
+
+::: {.fragment}
+這就是為什麼我們需要 **敏感度分析**！
+:::
+
+::: {.fragment}
+- 量化：需要多強的未測量混淆才能推翻結論？
+- 工具：E-value（最簡單實用）
+:::
+
+## 為什麼需要敏感度分析？
+
+::: {.incremental}
+- 再好的方法都無法處理「未測量混淆」
+- 敏感度分析：量化「需要多強的未測量混淆才能推翻結論」
+:::
+
+## E-value（最簡單實用）
+
+::: {.callout-note appearance="minimal"}
+## 什麼是 E-value？
+E-value 告訴你：「需要多強的未測量混淆因子，才能讓你的結果變成沒有效果」。數字越大，結果越穩健。
+:::
+
+```{.r code-line-numbers="1|3-4|6-7|9-11"}
+library(EValue)
+
+# 二元結果（RR）
+evalues.RR(1.5, lo = 1.2, hi = 1.9, true = 1)
+
+# 存活結果（HR）
+evalues.HR(0.7, lo = 0.5, hi = 0.9, true = 1)
+
+# 連續結果（先轉換）
+d <- abs(ate) / sd(Y)
+rr <- exp(0.91 * d)
+evalues.RR(rr, lo = rr_lo, hi = rr_hi, true = 1)
+```
+
+## 如何解讀 E-value
+
+E-value = 2.5 表示：
+
+::: {.incremental}
+- 需要一個 RR ≥ 2.5（對 treatment）且 RR ≥ 2.5（對 outcome）的未測量混淆
+- 才能完全解釋掉觀察到的效果
+- 越大 = 越穩健
+- 經驗法則：E-value > 2 通常算不錯
+:::
+
+## E-value 視覺化
+
+```{r}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 5
+
+# Simulate multiple study results with E-values
+studies <- data.frame(
+  study = c(
+    "研究 A\n(RR=1.8)",
+    "研究 B\n(RR=2.1)",
+    "研究 C\n(RR=1.3)",
+    "研究 D\n(RR=3.0)"
+  ),
+  rr = c(1.8, 2.1, 1.3, 3.0),
+  rr_lo = c(1.3, 1.5, 0.9, 2.0),
+  rr_hi = c(2.5, 2.9, 1.9, 4.5),
+  evalue = c(3.0, 3.6, 1.9, 5.4),
+  evalue_ci = c(1.9, 2.3, 1.0, 3.4)
+)
+
+studies$robust <- ifelse(
+  studies$evalue_ci >= 2,
+  "穩健 (E-value CI ≥ 2)",
+  "較脆弱 (E-value CI < 2)"
+)
+
+ggplot(studies, aes(x = evalue, y = reorder(study, evalue), color = robust)) +
+  geom_segment(
+    aes(x = evalue_ci, xend = evalue, yend = study),
+    linewidth = 1.5
+  ) +
+  geom_point(
+    aes(x = evalue_ci),
+    size = 4,
+    shape = 21,
+    fill = "white",
+    stroke = 1.5
+  ) +
+  geom_point(size = 5, shape = 21, aes(fill = robust), stroke = 1.5) +
+  geom_vline(
+    xintercept = 2,
+    linetype = "dashed",
+    color = "darkgreen",
+    linewidth = 1
+  ) +
+  scale_color_manual(
+    values = c(
+      "穩健 (E-value CI ≥ 2)" = colors$robust,
+      "較脆弱 (E-value CI < 2)" = colors$fragile
+    )
+  ) +
+  scale_fill_manual(
+    values = c(
+      "穩健 (E-value CI ≥ 2)" = colors$robust,
+      "較脆弱 (E-value CI < 2)" = colors$fragile
+    )
+  ) +
+  scale_x_continuous(breaks = 1:6, limits = c(1, 6)) +
+  labs(
+    x = "E-value",
+    y = "",
+    color = ""
+  ) +
+  annotate(
+    "text",
+    x = 2.1,
+    y = 0.6,
+    label = "閾值 2.0",
+    color = "darkgreen",
+    hjust = 0,
+    family = "openhuninn",
+    size = 5
+  ) +
+  theme_causal() +
+  guides(fill = "none")
+```
+
+::: {.fragment}
+**實心點** = E-value（點估計），**空心點** = E-value（信賴區間下界）
+:::
+
+## 小結：敏感度分析
+
+::: {.incremental}
+1. 敏感度分析是因果推論的**必要步驟**
+2. E-value 告訴你結果有多「穩健」
+3. E-value > 2 通常是合理的門檻
+:::
+
+::: {.fragment}
+> **最後一步**：怎麼把這些結果寫成論文？
+:::
+
+# 第八部分：結果報告 {data-stack-name="報告"}
+
+## 本節重點
+
+分析做完了，怎麼寫進論文？
+
+::: {.incremental}
+- Methods 段落怎麼寫？
+- 需要哪些圖表？
+- Results 怎麼報告？
+:::
+
+## Methods 怎麼寫
+
+> We estimated the average treatment effect using targeted maximum likelihood estimation (TMLE) with Super Learner for both propensity score and outcome models. The ensemble included logistic regression, random forest, and gradient boosting. Covariate balance was assessed using standardized mean differences (threshold < 0.1). Sensitivity to unmeasured confounding was evaluated using E-values.
+
+## 必備圖表
+
+| 圖表 | 內容 |
+|------|------|
+| Table 1 | Baseline characteristics（原始 + 加權後）|
+| Figure 1 | PS overlap plot |
+| Figure 2 | Love plot（SMD 平衡圖）|
+| Figure 3 | 結果圖（forest plot / KM curve）|
+| Table 2 | 主結果 + 95% CI + E-value |
+
+## 結果報告範例
+
+> The estimated risk difference was −5.2% (95% CI: −8.1% to −2.3%, p = 0.001), indicating the new drug reduced mortality by approximately 5 percentage points. All standardized mean differences were below 0.1 after weighting. The E-value was 2.8, suggesting that substantial unmeasured confounding would be required to explain away the observed effect.
+
+# 總結 {data-stack-name="總結"}
+
+## 小樣本的實務判準（不要踩雷！）
+
+::: {.callout-warning appearance="minimal"}
+## 幾百例臨床資料的優先順序
+**穩定性 > 可估性 > 模型華麗程度**
+:::
+
+::: {.incremental}
+1. **不要**把「模型越能分出誰被治療」當優點 → 分太開 = 重疊差 = 推論不穩
+2. **不要**把處置後變項塞進調整集合 → 除非你明確在估直接效果
+3. **不要**只報一個方法 → 至少要有平衡、重疊、權重、敏感度分析
+4. **要**預先宣告 estimand 和截斷規則 → 避免 p-hacking 嫌疑
+:::
+
+## 穩健性分析建議
+
+做 2-3 個替代分析，確認結果穩定：
+
+| 項目 | 替代設定 |
+|------|----------|
+| PS 模型 | 簡單（線性）vs 彈性（GAM/正則化）|
+| 截斷範圍 | 0.01/0.99 vs 0.05/0.95 |
+| 方法 | TMLE vs AIPW vs Matching |
+| Estimand | ATE vs ATT |
+
+::: {.fragment}
+> 如果結論只在某特定設定成立，**必須在討論中承認**
+:::
+
+## 完整分析計畫範本
+
+::: {.callout-tip appearance="minimal"}
+## 可以照抄的 checklist
+:::
+
+1. 定義 index time、處置 A、結局 Y、追蹤窗
+2. 用 DAG 決定混淆因子集合（全部 baseline）
+3. 多重插補處理缺失值
+4. 主 estimand：**ATT**（重疊充分才改 ATE）
+5. 主方法：**TMLE + cross-fitting (2-fold)**
+6. Nuisance：保守 Super Learner 庫 + PS 截斷 [0.01, 0.99]
+7. 報告：效應 + 95% CI、SMD、權重、重疊圖、E-value
+
+## 觀察性研究因果推論流程
+
+::: {.incremental}
+1. **Target Trial 設計**：定義研究問題
+2. **DAG 畫出因果假設**：確定要調整的變數
+3. **資料準備**：收集 baseline 混淆因子
+4. **TMLE + Super Learner**：雙重穩健估計
+5. **檢查**：PS overlap + SMD < 0.1
+6. **E-value 敏感度分析**：評估結果穩健性
+:::
+
+## 方法選擇速查
+
+| 類型 | 方法 |
+|------|------|
+| 連續 | `tmle(..., gaussian)` |
+| 二元 | `tmle(..., binomial)` |
+| 存活 | `survtmle()` |
+| 計數 | IPW + Poisson |
+
+## 常見問題
+
+| 問題 | 回答 |
+|------|------|
+| 樣本數要多少？ | 沒有絕對標準，但每組 > 100 較穩定 |
+| 混淆因子要放幾個？ | 根據 DAG 決定，不是越多越好 |
+| Reviewer 不熟 TMLE？ | 附 PS matching 當 sensitivity analysis |
+| PS 重疊很差怎麼辦？ | 考慮 trimming 或 overlap weights |
+
+## 延伸資源
+
+::: {.incremental}
+- Hernán & Robins "Causal Inference: What If"（免費線上）
+- `tlverse` 教學網站
+- Miguel Hernan 的 edX 課程
+:::
+
+## 謝謝！ {.center}
+
+Press `?` for keyboard shortcuts.

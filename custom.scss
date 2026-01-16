@@ -1,0 +1,64 @@
+/*-- scss:defaults --*/
+
+/*-- scss:rules --*/
+
+// Larger slide numbers
+.reveal .slide-number {
+  font-size: 24px !important;
+  font-weight: 600 !important;
+}
+
+// Taller progress bar
+.reveal .progress {
+  height: 10px !important;
+}
+
+.reveal .progress span {
+  background: #3d6869 !important;
+}
+
+// Headings color
+.reveal h1,
+.reveal h2,
+.reveal h3,
+.reveal h4,
+.reveal h5,
+.reveal h6 {
+  color: #3d6869 !important;
+}
+
+// Bold text color
+.reveal strong,
+.reveal b {
+  color: #3d6869 !important;
+}
+
+// Simplemenu size
+.menubar {
+  font-size: 18px !important;
+}
+
+.menubar > ul a {
+  padding: 0.3em 0.7em !important;
+}
+
+// Agenda active item
+.reveal .agenda-active {
+  color: #3d6869 !important;
+}
+
+// Code block max height (16 lines)
+.reveal pre code {
+  max-height: 22.4em !important;
+  overflow-y: auto !important;
+}
+
+// 10% smaller body font
+.reveal .slides {
+  font-size: 90% !important;
+}
+
+// 10% smaller h2
+.reveal h2 {
+  font-size: 1.44em !important;
+}

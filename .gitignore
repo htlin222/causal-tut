@@ -1,0 +1,42 @@
+# Quarto rendered output
+/_site/
+/_book/
+/.quarto/
+
+# R
+.Rproj.user/
+.Rhistory
+.Rdata
+.httr-oauth
+.DS_Store
+*.Rproj
+
+# R package build
+*.tar.gz
+*.Rcheck/
+
+# knitr/rmarkdown cache
+*_cache/
+*_files/
+*.knit.md
+*.utf8.md
+
+# Byte-compiled / optimized
+__pycache__/
+*.py[cod]
+
+# Environment
+.env
+.venv/
+renv/library/
+renv/staging/
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
