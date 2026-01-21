@@ -253,47 +253,6 @@ p1 + p2 + p3
 這三個圖要記住。左邊是混淆因子，箭頭同時指向治療和結果，要調整。中間是中介變數，是治療到結果的路徑上，不能調整。右邊是碰撞變數，箭頭同時指向它，調整會打開偏誤路徑。
 :::
 
-## 為什麼調整錯變數很危險？
-
-::: {.columns}
-::: {.column width="50%"}
-**調整中介變數**
-
-```{mermaid}
-%%| fig-width: 4
-flowchart LR
-    A[降壓藥] --> M[血壓↓]
-    M --> Y[心血管事件↓]
-```
-
-調整血壓 → 把藥效「調掉」了！
-
-::: {.explain-small}
-降壓藥透過降低血壓來減少心血管事件。如果我們調整血壓，就等於把藥物的作用機制「控制掉」，導致看不到真正的治療效果。
-:::
-:::
-::: {.column width="50%"}
-**調整碰撞變數**
-
-```{mermaid}
-%%| fig-width: 4
-flowchart TB
-    A[治療] & U[未測量因子] --> C[住院]
-    U --> Y[結果]
-```
-
-調整住院 → 打開後門、引入偏誤！
-
-::: {.explain-small}
-治療和未測量因子都會影響住院。原本 A 和 Y 之間沒有關聯，但一旦只看住院病人（調整 C），就人為創造了 A 與 Y 的虛假關聯。
-:::
-:::
-:::
-
-::: {.notes}
-這兩個例子很重要。左邊：如果降壓藥透過降低血壓來減少心血管事件，調整血壓就把藥效調掉了。右邊：只分析住院病人會產生選擇偏誤——這就是為什麼很多住院病人研究結果很難推廣。
-:::
-
 ## 調整什麼？
 
 | 變數類型 | 調整？ | 原因 |
@@ -338,14 +297,18 @@ flowchart TB
 :::
 
 ::: {.column width="50%"}
-```{mermaid}
-%%| fig-width: 5
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#3d6869', 'primaryTextColor': '#fff', 'primaryBorderColor': '#3d6869', 'lineColor': '#333'}}}%%
-flowchart TB
-    C[年齡/糖尿病/...]
-    A[Statin] --> Y[CV 死亡]
-    C --> A
-    C --> Y
+```{dot}
+//| fig-width: 5
+digraph {
+    rankdir=TB
+    node [shape=box, style=filled, fillcolor="#3d6869", fontcolor="white", width=1.5, fontname="jf-openhuninn-2.1"]
+    C [label="年齡/糖尿病"]
+    A [label="Statin"]
+    Y [label="CV 死亡"]
+    A -> Y
+    C -> A
+    C -> Y
+}
 ```
 :::
 

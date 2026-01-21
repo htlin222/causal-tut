@@ -40,3 +40,6 @@ renv/staging/
 # OS
 .DS_Store
 Thumbs.db
+_freeze/
+index.html
+slides.html

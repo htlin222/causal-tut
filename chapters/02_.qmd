@@ -305,12 +305,19 @@ ggplot(patient_data, aes(x = scenario, y = patient)) +
 → 新藥組本來就會比較好
 :::
 ::: {.column width="50%"}
-```{mermaid}
-%%| fig-width: 4
-flowchart TD
-    C[病人嚴重度] --> A[治療選擇]
-    C --> Y[結果]
-    A -.->|?| Y
+```{dot}
+//| fig-width: 4
+digraph {
+    rankdir=TB
+    node [shape=box, width=1.2, fontname="jf-openhuninn-2.1"]
+    edge [fontname="jf-openhuninn-2.1"]
+    C [label="病人嚴重度"]
+    A [label="治療選擇"]
+    Y [label="結果"]
+    C -> A
+    C -> Y
+    A -> Y [style=dashed, label="?"]
+}
 ```
 :::
 :::
