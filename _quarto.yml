@@ -4,11 +4,11 @@ project:
     - index.qmd
 
 title: "觀察性研究的因果推論"
-subtitle: "給臨床醫師的實戰指南"
+subtitle: "給臨床醫師的實戰指南<br>Causal Inference from Observational Studies: A Practical Guide for Clinicians"
 author:
-  - "Causal Inference from Observational Studies"
-  - "林協霆"
-  - "和信治癌中心醫院腫瘤內科部"
+  - name: "林協霆"
+    affiliations:
+      - name: "和信治癌中心醫院腫瘤內科部"
 
 format:
   revealjs:

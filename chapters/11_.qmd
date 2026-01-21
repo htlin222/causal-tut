@@ -14,6 +14,12 @@
 這是最後的實用環節——怎麼把因果推論的結果寫成論文。我會給大家範例文字和必備圖表的清單，可以直接修改使用。
 :::
 
+## 流程位置
+
+| 承接 | 本章目標 | 下一步 |
+|------|----------|--------|
+| 你已完成主分析與敏感度分析 | **把分析轉成可投稿的 Methods/Results** | 總結與行動清單 |
+
 ## Methods 怎麼寫
 
 > We estimated the average treatment effect using targeted maximum likelihood estimation (TMLE) with Super Learner for both propensity score and outcome models. The ensemble included logistic regression, random forest, and gradient boosting. Covariate balance was assessed using standardized mean differences (threshold < 0.1). Sensitivity to unmeasured confounding was evaluated using E-values.
@@ -44,3 +50,8 @@
 這是 Results 段落的範例。包含三個重點：效果估計和信賴區間、平衡診斷結果、E-value 的解讀。注意最後一句——用 E-value 來支持結果的穩健性。這是因果推論論文的標準寫法。
 :::
 
+## 本章輸出
+
+- [ ] 能寫出一段可投稿的 Methods
+- [ ] 能列出必備圖表清單
+- [ ] 能用標準格式報告 Results（含 SMD 與 E-value）
