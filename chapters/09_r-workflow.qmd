@@ -287,16 +287,16 @@ library(dplyr)
 SL.lib <- c("SL.glm", "SL.glmnet")
 
 # 載入資料
-df_cont <- read.csv("data/df_continuous.csv")
-df_bin <- read.csv("data/df_binary.csv")
-df_surv <- read.csv("data/df_survival.csv")
+df_cont <- read.csv("data/09_r-workflow/df_continuous.csv")
+df_bin <- read.csv("data/09_r-workflow/df_binary.csv")
+df_surv <- read.csv("data/09_r-workflow/df_survival.csv")
 ```
 
 ## 連續結果：6 要素架構
 
 | 要素 | 這個例子 |
 |------|----------|
-| 資料 | `data/df_continuous.csv` |
+| 資料 | `data/09_r-workflow/df_continuous.csv` |
 | 角色 | `Y`=血壓變化（連續），`A`=`treatment`，`W`=年齡/性別/共病/嚴重度 |
 | 方法 | TMLE |
 | 估計量 | ATE |
@@ -315,19 +315,26 @@ df_surv <- read.csv("data/df_survival.csv")
 
 請 AI 幫你完成這段分析，你可以這樣說：
 
-> 「請讀取 `data/df_continuous.csv`，這是一個降血壓藥物的觀察性研究資料。治療變數是 `treatment`，結果是 `outcome`（血壓變化，mmHg），混淆因子有 `age`, `sex`, `comorbidity`, `severity`。請用 TMLE 方法估計平均治療效果（ATE），並使用 Super Learner 組合 GLM 和 GLMNet 模型。」
+> 「請讀取 `data/09_r-workflow/df_continuous.csv`，這是一個降血壓藥物的觀察性研究資料。治療變數是 `treatment`，結果是 `outcome`（血壓變化，mmHg），混淆因子有 `age`, `sex`, `comorbidity`, `severity`。請用 TMLE 方法估計平均治療效果（ATE），並使用 Super Learner 組合 GLM 和 GLMNet 模型。」
 
 
 ::: {.notes}
 這是「Vibe Coding」的示範——用自然語言描述你要做什麼，讓 AI 幫你寫程式碼。這個 prompt 包含了所有必要資訊：資料位置、變數名稱、方法選擇。接下來看實際的程式碼。
 :::
 
-### 練習 prompt（請改成你的研究題目）
+## 練習 prompt（請改成你的研究題目）
 
-> 資料在 `data/df_continuous.csv`，共有 N 筆。  
+> 資料在 `data/09_r-workflow/df_continuous.csv`，共有 N 筆。  
 > `Y` 是 ______（連續），`A` 是 ______，`W` 包含 ______。  
 > 請用 TMLE 估計 ATE，並回報估計值+95% CI、SMD、PS 重疊、最大權重、有效樣本量。  
 > 最後用一句話解讀臨床意義。
+
+::: {.notes}
+這頁是練習模板，請學員把自己的研究題目填進去。
+
+- 先補齊 Y/A/W，再確認方法與估計量。
+- 強調先寫清楚目標，再請 AI 產出程式。
+:::
 
 ## 連續結果：程式碼
 
@@ -337,7 +344,7 @@ library(SuperLearner)
 
 SL.lib <- c("SL.glm", "SL.glmnet")
 
-df <- read.csv("data/df_continuous.csv")
+df <- read.csv("data/09_r-workflow/df_continuous.csv")
 
 fit_cont <- tmle(
   Y = df$outcome,
@@ -435,7 +442,7 @@ data.frame(
 
 請 AI 幫你完成這段分析，你可以這樣說：
 
-> 「請讀取 `data/df_binary.csv`，這是一個癌症治療的觀察性研究資料。治療變數是 `treatment`，結果是 `death`（0/1），混淆因子有 `age`, `sex`, `comorbidity`, `severity`。請用 TMLE 方法估計 Risk Difference 和 Risk Ratio。」
+> 「請讀取 `data/09_r-workflow/df_binary.csv`，這是一個癌症治療的觀察性研究資料。治療變數是 `treatment`，結果是 `death`（0/1），混淆因子有 `age`, `sex`, `comorbidity`, `severity`。請用 TMLE 方法估計 Risk Difference 和 Risk Ratio。」
 
 
 ::: {.notes}
@@ -446,16 +453,16 @@ data.frame(
 
 | 要素 | 這個例子 |
 |------|----------|
-| 資料 | `data/df_binary.csv` |
+| 資料 | `data/09_r-workflow/df_binary.csv` |
 | 角色 | `Y`=`death`（二元），`A`=`treatment`，`W`=年齡/性別/共病/嚴重度 |
 | 方法 | TMLE |
 | 估計量 | RD, RR |
 | 診斷 | SMD、PS 重疊、權重、ESS |
 | 輸出 | RD/RR + 95% CI + 一句臨床解讀 |
 
-### 練習 prompt（請改成你的研究題目）
+## 練習 prompt（請改成你的研究題目）
 
-> 資料在 `data/df_binary.csv`，共有 N 筆。  
+> 資料在 `data/09_r-workflow/df_binary.csv`，共有 N 筆。  
 > `Y` 是 ______（二元），`A` 是 ______，`W` 包含 ______。  
 > 請用 TMLE 估計 RD 與 RR，並回報估計值+95% CI、SMD、PS 重疊、最大權重、有效樣本量。  
 > 最後用一句話解讀臨床意義。
@@ -573,7 +580,7 @@ data.frame(
 
 請 AI 幫你完成這段分析，你可以這樣說：
 
-> 「請讀取 `data/df_survival.csv`，這是一個存活分析資料。治療變數是 `treatment`，追蹤時間是 `time`，事件指標是 `event`（1=死亡，0=設限），混淆因子有 `age`, `sex`, `comorbidity`, `severity`。請用 IPW 加權的 Cox 迴歸估計 Hazard Ratio。」
+> 「請讀取 `data/09_r-workflow/df_survival.csv`，這是一個存活分析資料。治療變數是 `treatment`，追蹤時間是 `time`，事件指標是 `event`（1=死亡，0=設限），混淆因子有 `age`, `sex`, `comorbidity`, `severity`。請用 IPW 加權的 Cox 迴歸估計 Hazard Ratio。」
 
 
 ::: {.notes}
@@ -584,16 +591,16 @@ data.frame(
 
 | 要素 | 這個例子 |
 |------|----------|
-| 資料 | `data/df_survival.csv` |
+| 資料 | `data/09_r-workflow/df_survival.csv` |
 | 角色 | `Y`=`Surv(time, event)`，`A`=`treatment`，`W`=年齡/性別/共病/嚴重度 |
 | 方法 | IPW + Cox（或 survtmle） |
 | 估計量 | HR |
 | 診斷 | SMD、PS 重疊、權重、ESS |
 | 輸出 | HR + 95% CI + 一句臨床解讀 |
 
-### 練習 prompt（請改成你的研究題目）
+## 練習 prompt（請改成你的研究題目）
 
-> 資料在 `data/df_survival.csv`，共有 N 筆。  
+> 資料在 `data/09_r-workflow/df_survival.csv`，共有 N 筆。  
 > `Y` 是 `Surv(time, event)`，`A` 是 ______，`W` 包含 ______。  
 > 請用 IPW + Cox 估計 HR，並回報估計值+95% CI、SMD、PS 重疊、最大權重、有效樣本量。  
 > 最後用一句話解讀臨床意義。
@@ -772,7 +779,7 @@ data.frame(
 | 診斷 | 閾值 0.1、極端權重 |
 | 輸出 | SMD 表 + Love Plot + 一句解讀 |
 
-### 練習 prompt（請改成你的研究題目）
+## 練習 prompt（請改成你的研究題目）
 
 > 我已經計算好權重物件 `w`。  
 > 請用 `cobalt` 顯示 SMD 表（閾值 0.1）並畫 Love Plot；同時回報最大權重與有效樣本量。  
@@ -829,7 +836,7 @@ love.plot(w, thresholds = c(m = 0.1))
 :::
 
 
-## 平衡診斷：執行結果
+## 平衡診斷：執行結果 {.smaller}
 
 ```{r}
 #| label: balance-check
@@ -1067,8 +1074,9 @@ sum(w$weights)^2 / sum(w$weights^2)
 
 **加權後有效樣本量**：
 
-$$n_{eff} =
-\\frac{(\\sum w_i)^2}{\\sum w_i^2}$$
+$$
+n_{eff} = \frac{(\sum w_i)^2}{\sum w_i^2}
+$$
 :::
 ::: {.column width="50%"}
 **解讀**

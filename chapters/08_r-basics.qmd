@@ -105,7 +105,7 @@ R 的基本語法很簡單。箭頭 <- 是賦值，c() 是建立向量，data.fr
 
 ```r
 # 從 CSV 檔讀取
-df <- read.csv("my_data.csv")
+df <- read.csv("data/08_r-basics/patients_basic.csv")
 
 # 查看資料結構
 head(df) # 前 6 筆
