@@ -75,6 +75,7 @@ E-value 的解讀：需要一個「同時影響治療和結果」的未測量混
 #| echo: false
 #| fig-width: 9
 #| fig-height: 5
+#| label: 10_-chunk-01
 
 # Simulate multiple study results with E-values
 studies <- data.frame(

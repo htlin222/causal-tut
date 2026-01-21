@@ -5,7 +5,10 @@ project:
 
 title: "觀察性研究的因果推論"
 subtitle: "給臨床醫師的實戰指南"
-author: "Causal Inference from Observational Studies"
+author:
+  - "Causal Inference from Observational Studies"
+  - "林協霆"
+  - "和信治癌中心醫院腫瘤內科部"
 
 format:
   revealjs:

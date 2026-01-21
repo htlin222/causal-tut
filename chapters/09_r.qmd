@@ -21,6 +21,7 @@
 #| echo: false
 #| fig-width: 12
 #| fig-height: 6
+#| label: 09_r-chunk-01
 
 set.seed(42)
 
@@ -735,6 +736,7 @@ Love Plot 是平衡診斷的標準圖形。圓點是加權前的 SMD，三角形
 #| echo: false
 #| fig-width: 8
 #| fig-height: 5
+#| label: 09_r-chunk-12
 
 set.seed(123)
 
@@ -823,7 +825,8 @@ sum(w$weights)^2 / sum(w$weights^2)
 
 **加權後有效樣本量**：
 
-$$n_{eff} = rac{(\sum w_i)^2}{\sum w_i^2}$$
+$$n_{eff} = 
+rac{(\sum w_i)^2}{\sum w_i^2}$$
 :::
 ::: {.column width="50%"}
 **解讀**

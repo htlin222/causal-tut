@@ -67,6 +67,7 @@ TMLE 和 AIPW 都是雙重穩健方法。TMLE 多一個 targeting 步驟，讓�
 #| echo: false
 #| fig-width: 9
 #| fig-height: 5
+#| label: 05_-chunk-01
 
 # 建立 2x2 情境表
 dr_scenarios <- data.frame(

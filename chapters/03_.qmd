@@ -161,6 +161,7 @@ DAG 是因果推論最重要的工具。記住這三種變數：混淆因子要�
 #| fig-width: 12
 #| fig-height: 4
 #| message: false
+#| label: 03_-chunk-01
 
 library(ggdag)
 library(dagitty)
@@ -343,6 +344,7 @@ digraph {
 #| echo: false
 #| fig-width: 10
 #| fig-height: 5
+#| label: 03_-chunk-02
 
 set.seed(42)
 n <- 1000

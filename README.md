@@ -34,6 +34,8 @@ make preview
 make clean
 ```
 
+Note: `index.qmd` includes `chapters/*.qmd` via Quarto include syntax.
+
 ## Output
 
 | File          | Description           | URL                                         |
