@@ -38,7 +38,7 @@
 #| echo: false
 #| fig-width: 10
 #| fig-height: 5
-#| label: 04_-chunk-01
+#| label: ps-model-illustration
 
 set.seed(123)
 n <- 200
@@ -107,7 +107,7 @@ p1 + p2 + plot_layout(guides = "collect") & theme(legend.position = "top")
 #| echo: false
 #| fig-width: 8
 #| fig-height: 4
-#| label: 04_-chunk-02
+#| label: ps-overlap-density
 
 set.seed(42)
 n <- 500
@@ -199,7 +199,7 @@ IPW 的數學很漂亮，但實務上問題很大。當 PS 接近 0 或 1 時，
 #| echo: false
 #| fig-width: 10
 #| fig-height: 5
-#| label: 04_-chunk-03
+#| label: ipw-weight-explosion
 
 set.seed(456)
 n <- 500

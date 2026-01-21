@@ -50,7 +50,7 @@
 ```{r}
 #| echo: false
 #| message: false
-#| label: 07_-chunk-01
+#| label: baseline-summary-table
 library(gtsummary)
 library(dplyr)
 
@@ -156,7 +156,7 @@ data.frame(
 #| echo: false
 #| fig-width: 6
 #| fig-height: 5
-#| label: 07_-chunk-02
+#| label: ps-overlap-good
 
 set.seed(789)
 n <- 400
@@ -198,7 +198,7 @@ ggplot(df_good, aes(x = ps, fill = group)) +
 #| echo: false
 #| fig-width: 6
 #| fig-height: 5
-#| label: 07_-chunk-03
+#| label: ps-overlap-bad
 
 # 差的重疊：兩組 PS 幾乎不重疊
 ps_bad_treated <- rbeta(n / 2, 5, 2) * 0.4 + 0.55

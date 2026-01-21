@@ -189,7 +189,7 @@ DAG 是因果推論最重要的工具。記住這三種變數：混淆因子要�
 #| fig-width: 12
 #| fig-height: 4
 #| message: false
-#| label: 03_-chunk-01
+#| label: dag-structures
 
 library(ggdag)
 library(dagitty)
@@ -328,6 +328,7 @@ p1 + p2 + p3
 ::: {.column width="50%"}
 ```{dot}
 //| fig-width: 5
+//| label: dag-confounder-example
 digraph {
     rankdir=TB
     node [shape=box, style=filled, fillcolor="#3d6869", fontcolor="white", width=1.5, fontname="jf-openhuninn-2.1"]
@@ -372,7 +373,7 @@ digraph {
 #| echo: false
 #| fig-width: 10
 #| fig-height: 5
-#| label: 03_-chunk-02
+#| label: adjustment-bias-sim
 
 set.seed(42)
 n <- 1000
@@ -528,4 +529,3 @@ ggplot(results, aes(x = scenario, y = estimate, color = correct)) +
 ::: {.notes}
 研究設計的部分到這裡。記住四個重點：Target Trial、DAG、只調整混淆因子、確認假設。接下來會進入統計方法。
 :::
-

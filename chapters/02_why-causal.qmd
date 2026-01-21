@@ -67,7 +67,7 @@ p 值小於 0.001、效果量 20% 的差異、每組 500 人。從傳統統計�
 #| echo: false
 #| fig-width: 10
 #| fig-height: 5
-#| label: 02_-chunk-01
+#| label: simpson-paradox-plot
 
 # Simpson's Paradox 風格的混淆效應展示
 set.seed(2024)
@@ -190,7 +190,7 @@ ggplot(combined, aes(x = treatment, y = survival * 100, fill = treatment)) +
 #| echo: false
 #| fig-width: 10
 #| fig-height: 5
-#| label: 02_-chunk-02
+#| label: counterfactual-plot
 
 library(ggplot2)
 
@@ -315,6 +315,7 @@ ggplot(patient_data, aes(x = scenario, y = patient)) +
 ::: {.column width="50%"}
 ```{dot}
 //| fig-width: 4
+//| label: confounding-dag
 digraph {
     rankdir=TB
     node [shape=box, width=1.2, fontname="jf-openhuninn-2.1"]
@@ -373,4 +374,3 @@ digraph {
 ::: {.notes}
 記住這三個重點。觀察性研究不是不能做因果推論，但需要特殊方法。接下來會教大家怎麼設計研究問題，這是最重要的第一步。
 :::
-

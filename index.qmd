@@ -1,23 +1,23 @@
-{{< include chapters/01_.qmd >}}
+{{< include chapters/01_intro.qmd >}}
 
-{{< include chapters/02_.qmd >}}
+{{< include chapters/02_why-causal.qmd >}}
 
-{{< include chapters/03_.qmd >}}
+{{< include chapters/03_study-design.qmd >}}
 
-{{< include chapters/04_.qmd >}}
+{{< include chapters/04_methods-ps-ipw.qmd >}}
 
-{{< include chapters/05_.qmd >}}
+{{< include chapters/05_methods-tmle.qmd >}}
 
-{{< include chapters/06_.qmd >}}
+{{< include chapters/06_method-selection.qmd >}}
 
-{{< include chapters/07_.qmd >}}
+{{< include chapters/07_data-prep.qmd >}}
 
-{{< include chapters/08_r.qmd >}}
+{{< include chapters/08_r-basics.qmd >}}
 
-{{< include chapters/09_r.qmd >}}
+{{< include chapters/09_r-workflow.qmd >}}
 
-{{< include chapters/10_.qmd >}}
+{{< include chapters/10_sensitivity.qmd >}}
 
-{{< include chapters/11_.qmd >}}
+{{< include chapters/11_reporting.qmd >}}
 
-{{< include chapters/12_.qmd >}}
+{{< include chapters/12_summary.qmd >}}
