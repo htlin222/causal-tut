@@ -21,6 +21,27 @@ Causal Inference from Observational Studies: A Practical Guide for Clinicians
 - **codeFocus** - Progressive code line highlighting with explanations
 - **simplemenu** - Navigation menu bar for sections
 
+## R Scripts
+
+Runnable analysis scripts in `Rscript/chapter_09_r-workflow/`:
+
+| Script                     | Description                     | Outputs                                    |
+| -------------------------- | ------------------------------- | ------------------------------------------ |
+| `01_load_data.R`           | Load and inspect datasets       | -                                          |
+| `02_tmle_continuous.R`     | TMLE for continuous outcome     | HTML tables, forest plot                   |
+| `03_tmle_binary.R`         | TMLE for binary outcome (RD/RR) | HTML tables, forest plot                   |
+| `04_survival_tmle.R`       | Survival TMLE                   | HTML tables, KM curve                      |
+| `05_survival_ipw_cox.R`    | IPW-weighted Cox regression     | HTML tables, forest plot, KM curve         |
+| `06_balance_diagnostics.R` | Covariate balance diagnostics   | Love plot, PS overlap, weight distribution |
+
+Run from repo root:
+
+```bash
+Rscript Rscript/chapter_09_r-workflow/02_tmle_continuous.R
+```
+
+Outputs saved to `output/chapter_09/` (gitignored).
+
 ## Quick Start
 
 ```bash
@@ -46,7 +67,7 @@ Note: `index.qmd` includes `chapters/*.qmd` via Quarto include syntax.
 ## Requirements
 
 - [Quarto](https://quarto.org/) ≥ 1.3
-- R packages: `ggplot2`, `showtext`, `cobalt`, `MatchIt`, etc.
+- R packages: `tmle`, `survtmle`, `SuperLearner`, `WeightIt`, `cobalt`, `gtsummary`, `gt`, `ggplot2`, `ggsurvfit`, `survival`
 
 ## License
 
