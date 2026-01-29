@@ -88,9 +88,15 @@ TMLE 和 AIPW 都是雙重穩健方法。TMLE 多一個 targeting 步驟，讓�
 
 # 建立 2x2 情境表
 dr_scenarios <- data.frame(
-  ps_model = rep(c("PS 模型
-正確", "PS 模型
-錯誤"), each = 2),
+  ps_model = rep(
+    c(
+      "PS 模型
+正確",
+      "PS 模型
+錯誤"
+    ),
+    each = 2
+  ),
   outcome_model = rep(c("Outcome 模型正確", "Outcome 模型錯誤"), 2),
   result = c("無偏誤", "無偏誤", "無偏誤", "有偏誤"),
   color = c("robust", "robust", "robust", "fragile")
@@ -98,9 +104,12 @@ dr_scenarios <- data.frame(
 
 dr_scenarios$ps_model <- factor(
   dr_scenarios$ps_model,
-  levels = c("PS 模型
-正確", "PS 模型
-錯誤")
+  levels = c(
+    "PS 模型
+正確",
+    "PS 模型
+錯誤"
+  )
 )
 dr_scenarios$outcome_model <- factor(
   dr_scenarios$outcome_model,
@@ -272,34 +281,6 @@ Super Learner 用了彈性的機器學習模型，但這會帶來一個統計問
 :::
 
 
-
-## Cross-Fitting（交叉擬合）
-
-::: {.callout-tip appearance="minimal"}
-## 解法
-用**不同的資料**來擬合模型和估計效應 → 避免過擬合影響推論
-:::
-
-**做法**：
-
-::: {.incremental .smaller}
-1. 把資料分成 K 折（幾百例建議 **2-fold**）
-2. 用 K-1 折擬合模型
-3. 用剩下 1 折預測
-4. 輪流做，最後合併
-:::
-
-::: {.fragment}
-`tmle3` 和 `ltmle` 套件會自動幫你做！
-:::
-
-::: {.callout-tip appearance="minimal"}
-## 白話總結
-Cross-fitting 就像「考試防作弊」：用一半資料訓練模型，用另一半驗證。這樣模型不會「背答案」，推論才可靠。
-:::
-
-
-
 ## PS 截斷（Truncation）
 
 ::: {.callout-warning appearance="minimal"}
@@ -337,7 +318,7 @@ ps_truncated <- pmax(0.05, pmin(0.95, ps)) # 保守
 
 - [ ] 能解釋「雙重穩健」的意義
 - [ ] 知道 TMLE 為何比單純 IPW 更穩定
-- [ ] 了解 cross-fitting 與 PS 截斷的用途
+- [ ] PS 截斷的用途
 
 ::: {.fragment}
 > **下一步**：不同類型的結果變數，要用什麼方法？

@@ -47,3 +47,6 @@ slides.html
 
 # R script outputs
 output/
+
+# Local Netlify folder
+.netlify

@@ -276,17 +276,17 @@ plot_dag <- function(dag, title, adjust_color = "gray80") {
 p1 <- plot_dag(
   dag_confounder,
   "混淆因子 (Confounder)
-✅ 該調整"
+該調整"
 )
 p2 <- plot_dag(
   dag_mediator,
   "中介變數 (Mediator)
-❌ 不該調整"
+不該調整"
 )
 p3 <- plot_dag(
   dag_collider,
   "碰撞變數 (Collider)
-❌ 不該調整"
+不該調整"
 )
 
 p1 + p2 + p3
@@ -299,203 +299,6 @@ p1 + p2 + p3
 ::: {.notes}
 這三個圖要記住。左邊是混淆因子，箭頭同時指向治療和結果，要調整。中間是中介變數，是治療到結果的路徑上，不能調整。右邊是碰撞變數，箭頭同時指向它，調整會打開偏誤路徑。
 :::
-
-
-## 調整什麼？
-
-| 變數類型 | 調整？ | 原因 |
-|:---------|:------:|:-----|
-| 混淆因子 | ✅ | 阻斷後門路徑 |
-| 中介變數 | ❌ | 會移除治療效果 |
-| 碰撞變數 | ❌ | 會打開新的偏誤路徑 |
-| 工具變數 | ❌ | 只影響治療，不直接影響結果 |
-
-::: {.fragment}
-### 實務建議
-
-> 畫出 DAG，根據因果結構決定調整哪些變數，而非「把所有變數都丟進去」
-:::
-
-::: {.notes}
-這張表要記住。很多人習慣「把所有變數都丟進模型」，但這是錯的。調整錯誤的變數可能比不調整更糟糕。DAG 幫你決定該調整什麼。
-:::
-
-
-## 如何為你的研究畫 DAG？ {.smaller}
-
-::: {.callout-tip appearance="minimal"}
-## 實例：Statin 是否降低心血管死亡？
-:::
-
-:::: {.columns}
-
-::: {.column width="50%"}
-**步驟 1：列出關鍵變數**
-
-- 暴露 (A)：Statin 使用
-- 結果 (Y)：心血管死亡
-- 可能的混淆因子：年齡、糖尿病、高血壓、BMI、抽菸
-
-**步驟 2：思考因果方向**
-
-問自己：
-
-- 這個變數會影響用藥決定嗎？
-- 這個變數會影響結果嗎？
-- 兩者都是 → 混淆因子
-:::
-
-::: {.column width="50%"}
-```{dot}
-//| fig-width: 5
-//| label: dag-confounder-example
-digraph {
-    rankdir=TB
-    node [shape=box, style=filled, fillcolor="#3d6869", fontcolor="white", width=1.5, fontname="jf-openhuninn-2.1"]
-    C [label="年齡/糖尿病"]
-    A [label="Statin"]
-    Y [label="CV 死亡"]
-    A -> Y
-    C -> A
-    C -> Y
-}
-```
-:::
-
-::::
-
-
-## 畫 DAG 的常見錯誤
-
-| 錯誤 | 問題 | 正確做法 |
-|------|------|----------|
-| 把所有變數都當混淆因子 | 可能調整到中介/碰撞 | 先想因果方向 |
-| 放入治療後才測量的變數 | 可能是中介變數 | 只用 baseline 變數 |
-| 忽略未測量的混淆 | 以為調整完就沒偏誤 | 做敏感度分析 |
-
-::: {.fragment}
-::: {.callout-note appearance="minimal"}
-## 工具推薦
-用 [DAGitty](https://www.dagitty.net/) 線上畫 DAG，它會自動告訴你該調整哪些變數！
-:::
-:::
-
-
-
-## 調整對 vs 調整錯：模擬比較
-
-```{r}
-#| echo: false
-#| fig-width: 10
-#| fig-height: 5
-#| label: adjustment-bias-sim
-
-set.seed(42)
-n <- 1000
-
-# 模擬資料：真實效果是 -5
-# 情境 1：有 confounder 未調整 -> 有偏誤
-# 情境 2：調整 confounder -> 正確
-# 情境 3：調整 mediator -> 效果變小
-# 情境 4：調整 collider -> 產生偏誤
-
-true_effect <- -5
-
-# 模擬估計值和信賴區間
-results <- data.frame(
-  scenario = factor(
-    c(
-      "未調整
-（原始差異）",
-      "調整混淆因子
-（正確做法）",
-      "調整中介變數
-（錯誤：效果消失）",
-      "調整碰撞變數
-（錯誤：偏誤）"
-    ),
-    levels = c(
-      "未調整
-（原始差異）",
-      "調整混淆因子
-（正確做法）",
-      "調整中介變數
-（錯誤：效果消失）",
-      "調整碰撞變數
-（錯誤：偏誤）"
-    )
-  ),
-  estimate = c(-8.5, -5.1, -1.2, -7.8),
-  ci_lo = c(-10.2, -6.5, -2.8, -9.5),
-  ci_hi = c(-6.8, -3.7, 0.4, -6.1),
-  correct = c(FALSE, TRUE, FALSE, FALSE)
-)
-
-ggplot(results, aes(x = scenario, y = estimate, color = correct)) +
-  geom_hline(
-    yintercept = true_effect,
-    linetype = "dashed",
-    color = colors$accent,
-    linewidth = 1.0
-  ) +
-  geom_hline(yintercept = 0, color = "gray50") +
-  geom_pointrange(
-    aes(ymin = ci_lo, ymax = ci_hi),
-    size = 1.2,
-    linewidth = 1.2
-  ) +
-  geom_label(
-    aes(label = sprintf("%.1f", estimate)),
-    vjust = -1.0,
-    size = 5,
-    family = "openhuninn",
-    fill = "white",
-    label.size = 0,
-    show.legend = FALSE
-  ) +
-  scale_color_manual(
-    values = c("TRUE" = colors$robust, "FALSE" = colors$fragile),
-    labels = c("TRUE" = "正確", "FALSE" = "有偏誤"),
-    name = ""
-  ) +
-  annotate(
-    "label",
-    x = 3.4,
-    y = -4,
-    label = "真實效果",
-    hjust = 0.5,
-    family = "openhuninn",
-    color = colors$accent,
-    fill = "white",
-    label.size = 0,
-    size = 4
-  ) +
-  labs(
-    x = "",
-    y = "估計的治療效果",
-    title = "不同調整策略的結果"
-  ) +
-  coord_cartesian(ylim = c(-12, 2)) +
-  theme_causal() +
-  theme(
-    axis.text.x = element_text(size = 11),
-    legend.position = "top"
-  )
-```
-
-::: {.fragment}
-**結論**：調整錯誤的變數，比不調整還糟糕！
-:::
-
-
-
-## 三大因果假設
-
-| 假設 | 白話意思 | 怎麼處理 |
-|------|----------|----------|
-| 一致性 | 治療定義要明確 | 研究設計 |
-| 可交換性 | 沒有未測量混淆 | 調整 + 敏感度分析 |
-| 正值性 | 每種人都有機會接受各治療 | 檢查 PS 分布 |
 
 
 ## 小結：研究設計思維

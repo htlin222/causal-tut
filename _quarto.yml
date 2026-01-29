@@ -3,14 +3,12 @@ project:
   output-dir: dist
   render:
     - index.qmd
-
 title: "觀察性研究的因果推論"
 subtitle: "給臨床醫師的實戰指南<br>Causal Inference from Observational Studies: A Practical Guide for Clinicians"
 author:
   - name: "林協霆"
     affiliations:
       - name: "和信治癌中心醫院腫瘤內科部"
-
 format:
   revealjs:
     output-file: slides.html
@@ -35,7 +33,7 @@ format:
   html:
     output-file: index.html
     toc: true
-    toc-depth: 2
+    toc-depth: 3
     theme: cosmo
     code-fold: true
     code-tools: true

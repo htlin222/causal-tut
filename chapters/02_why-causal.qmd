@@ -12,20 +12,6 @@
 :::
 
 
-## 流程位置
-
-| 承接 | 本章目標 | 下一步 |
-|------|----------|--------|
-| 你剛看完課程地圖 | **理解為什麼「直接比較」會誤導** | 把問題設計成可回答的研究（Target Trial） |
-
-
-::: {.notes}
-這頁用來定位學習進度，讓學員知道現在在哪一段。
-
-- 請快速點出「承接／本章目標／下一步」三欄的重點。
-- 提醒學員此頁是導航，不需要細講內容。
-:::
-
 ## 研究結果看起來很棒！
 
 | 組別 | 人數 | 一年存活率 | p-value |
@@ -198,6 +184,8 @@ ggplot(combined, aes(x = treatment, y = survival * 100, fill = treatment)) +
 :::
 
 
+
+
 ## 反事實：我們永遠只看到一半
 
 ```{r}
@@ -254,8 +242,14 @@ ggplot(patient_data, aes(x = scenario, y = patient)) +
     height = 0.8
   ) +
   geom_text(
-    aes(label = paste0(treatment, "
-", outcome_label)),
+    aes(
+      label = paste0(
+        treatment,
+        "
+",
+        outcome_label
+      )
+    ),
     size = 5,
     family = "openhuninn",
     color = ifelse(patient_data$observed, "white", "gray40")
@@ -279,6 +273,25 @@ ggplot(patient_data, aes(x = scenario, y = patient)) +
 ::: {.notes}
 這張圖是因果推論的核心困境。每個病人我們只能觀察到一種結果——用藥或不用藥。另一個結果永遠是問號。RCT 的隨機化讓我們可以用「另一組人」來估計反事實；觀察性研究要用統計方法來模擬這個過程。
 :::
+
+
+## 林俊傑 - 可惜沒如果
+
+倘若那天
+
+把該說的話好好說 該體諒的不執著
+
+如果那天我 不受情緒挑撥 你會怎麼做
+
+那麼多如果 可能如果我
+
+可惜沒如果 ( Counterfact ) 只剩下結果 (Outcome)
+
+
+- Y(1)：在「把話好好說、體諒但不執著、不受情緒挑撥」這種處置（treatment）發生的結果
+  - (JJ 跟 Angelababay 修成正果)。
+- Y(0)：在實際發生（JJ當天的真實行為與狀態）所得到的結果
+  - ( 沒有跟 Aneglababy 在一起，詳見 MV )。
 
 
 ## 經典謬誤案例

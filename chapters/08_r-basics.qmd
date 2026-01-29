@@ -41,7 +41,7 @@
 ::: {.fragment}
 ::: {.callout-tip appearance="minimal"}
 ## 建議
-RStudio 是寫 R 最方便的介面，強烈建議使用
+Positron 是現代寫 R 最方便的介面，強烈建議使用
 :::
 :::
 
