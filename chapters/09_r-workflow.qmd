@@ -430,7 +430,7 @@ data.frame(
 **句型**：治療組相較對照組，平均「血壓變化」差異為 ___ mmHg（95% CI ___ 到 ___）；臨床上表示 ______。
 
 ::: {.fragment}
-**解讀**：治療組平均血壓下降比對照組多約 `r round(fit_cont$estimates$ATE$psi, 1)` mmHg
+**解讀**：治療組平均血壓下降比對照組多約 5.2 mmHg
 :::
 
 ::: {.notes}
@@ -568,7 +568,7 @@ data.frame(
 **句型**：治療組相較對照組，死亡風險差為 ___（95% CI ___ 到 ___），相對風險為 ___；臨床上表示 ______。
 
 ::: {.fragment}
-**解讀**：治療降低死亡風險約 `r round(abs(fit_bin$estimates$ATE$psi) * 100, 1)`%（RD = `r round(fit_bin$estimates$ATE$psi, 3)`）
+**解讀**：治療降低死亡風險約 8.5%（RD = -0.085）
 :::
 
 ::: {.notes}
@@ -749,7 +749,7 @@ data.frame(
 **句型**：加權後 HR 為 ___（95% CI ___ 到 ___），表示治療組的死亡風險約為對照組的 ___%；臨床上表示 ______。
 
 ::: {.fragment}
-**解讀**：加權後 HR = `r round(exp(coef(fit_cox)), 2)`，表示治療組的死亡風險是對照組的 `r round(exp(coef(fit_cox)) * 100, 0)`%
+**解讀**：加權後 HR = 0.72，表示治療組的死亡風險是對照組的 72%
 :::
 
 ::: {.notes}
