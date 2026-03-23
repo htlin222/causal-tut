@@ -29,8 +29,16 @@ jobs:
         with:
           r-version: 'release'
 
+      - name: Install knitr and rmarkdown
+        run: |
+          Rscript -e 'options(renv.config.enabled = FALSE); install.packages(c("knitr", "rmarkdown"), repos = "https://cloud.r-project.org")'
+        env:
+          RENV_CONFIG_ENABLED: 'false'
+
       - name: Build
         run: make deploy
+        env:
+          RENV_CONFIG_ENABLED: 'false'
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
