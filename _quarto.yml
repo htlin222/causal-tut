@@ -9,6 +9,9 @@ author:
   - name: "林協霆"
     affiliations:
       - name: "和信治癌中心醫院腫瘤內科部"
+execute:
+  eval: false
+  echo: true
 format:
   revealjs:
     output-file: slides.html
