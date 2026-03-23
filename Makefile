@@ -11,12 +11,11 @@ render:
 preview:
 	quarto preview index.qmd
 
-# Build for deployment (copy to _site)
+# Build for deployment (copy from dist/ to _site/)
 deploy:
 	quarto render index.qmd
 	mkdir -p _site
-	cp -r index.html slides.html index_files slides_files _site/ 2>/dev/null || true
-	cp -r custom.scss _site/ 2>/dev/null || true
+	cp -r dist/* _site/
 
 # Clean output
 clean:
