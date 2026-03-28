@@ -1,3 +1,7 @@
+![GitHub stars](https://img.shields.io/github/stars/htlin222/causal-tut?style=flat-square)
+![GitHub last commit](https://img.shields.io/github/last-commit/htlin222/causal-tut?style=flat-square)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
+
 # 觀察性研究的因果推論：給臨床醫師的實戰指南
 
 Causal Inference from Observational Studies: A Practical Guide for Clinicians
